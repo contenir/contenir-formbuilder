@@ -24,21 +24,9 @@
             "ignoreSourceCodeByRegex": ["'min' => is_numeric\\(\\$min\\) \\? \\(int\\) \\$min : 0,"]
         },
 
-        "MethodCallRemoval": {
-            "ignore": [
-                // Csrf is an InputProvider: Laminas Form merges the element's own input
-                // specification (required, with the CSRF validator) into the input filter,
-                // so the CSRF input is required and token-checked without these calls.
-                "Contenir\\FormBuilder\\Service\\FormBuilderService::build::86",
-                "Contenir\\FormBuilder\\Service\\FormBuilderService::buildCsrfInput::129",
-                "Contenir\\FormBuilder\\Service\\FormBuilderService::buildCsrfInput::130"
-            ]
-        },
         "MatchArmRemoval": {
-            "ignore": [
-                // Without the arm, `required` reaches ValidatorFactory::create(), which also returns null.
-                "Contenir\\FormBuilder\\Service\\FormBuilderService::buildInput::163"
-            ]
+            // Without the arm, `required` reaches ValidatorFactory::create(), which also returns null.
+            "ignoreSourceCodeByRegex": ["ValidatorFactory::TYPE_REQUIRED\\s+=> null,"]
         },
 
         "ReturnRemoval": {
@@ -56,8 +44,6 @@
                 // A non-array post or row yields no conditions (null) further down anyway.
                 "Contenir\\FormBuilder\\Conditional\\ConditionalRulesParser::parse::61",
                 "Contenir\\FormBuilder\\Conditional\\ConditionalRulesParser::normaliseRow::87",
-                // Stripping attributes from an element that was just unwrapped (detached) has no effect.
-                "Contenir\\FormBuilder\\Html\\FormContentSanitizer::sanitizeElement::156",
                 // preg_replace_callback() on an empty template returns '' as well.
                 "Contenir\\FormBuilder\\Service\\TokenReplacer::dispatch::185"
             ]
@@ -98,39 +84,6 @@
                 "Contenir\\FormBuilder\\Render\\FormMarkup::columnAttributes::193",
                 "Contenir\\FormBuilder\\Render\\FormMarkup::columnAttributes::198"
             ]
-        },
-
-        // libxml's HTML parser ignores preserveWhiteSpace and auto-closes the root
-        // wrapper, and only the wrapper is serialised, so the implied html/body and
-        // doctype flags make no difference to the output.
-        "TrueValue": {
-            "ignoreSourceCodeByRegex": ["\\$doc->preserveWhiteSpace = true;"]
-        },
-        "ConcatOperandRemoval": {
-            "ignoreSourceCodeByRegex": ["'<\\?xml encoding=\"UTF-8\">' \\. self::ROOT_OPEN \\. \\$html \\. self::ROOT_CLOSE,"]
-        },
-        "BitwiseOr": {
-            "ignoreSourceCodeByRegex": ["LIBXML_HTML_NOIMPLIED \\| LIBXML_HTML_NODEFDTD,"]
-        },
-        // Cleaning an ancestor first only detaches or re-parents its descendants, which
-        // are still cleaned afterwards, so the visiting order does not change the output.
-        "UnwrapArrayReverse": {
-            "ignoreSourceCodeByRegex": ["foreach \\(array_reverse\\(\\$elements\\) as \\$element\\) \\{"]
-        },
-        // Only the part before the first colon is read, so a limit of 3 splits it the same.
-        "IncrementInteger": {
-            "ignoreSourceCodeByRegex": ["\\$scheme = strtolower\\(explode\\(':', \\$value, limit: 2\\)\\[0\\]\\);"]
-        },
-        // libxml's HTML parser already lower-cases tag and attribute names.
-        "UnwrapStrToLower": {
-            "ignoreSourceCodeByRegex": [
-                "\\$tag = strtolower\\(\\$element->tagName\\);",
-                "\\$lower = strtolower\\(\\$name\\);"
-            ]
-        },
-        // ALLOWED_ATTRS_ANY holds exactly one attribute.
-        "SpreadOneItem": {
-            "ignoreSourceCodeByRegex": ["\\.\\.\\.self::ALLOWED_ATTRS_ANY,"]
         }
     },
     "staticAnalysisTool": "mago"

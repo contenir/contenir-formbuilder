@@ -65,6 +65,29 @@ final class FormContentSanitizerTest extends TestCase
             'empty href removed'               => ['<a href=" ">x</a>', '<a>x</a>'],
             'utf-8 preserved'                  => ['<p>Café — ✓</p>', '<p>Café — ✓</p>'],
             'stray closing wrapper ignored'    => ['a</div><script>x</script>b', 'a'],
+            'upper-case script removed'        => ['<SCRIPT>alert(1)</SCRIPT>ok', 'ok'],
+            'mixed-case script removed'        => ['<p>a<ScRiPt>alert(1)</sCrIpT>b</p>', '<p>ab</p>'],
+            'img with onerror unwrapped'       => ['<img src=x onerror=alert(1)>ok', 'ok'],
+            'upper-case handlers dropped'      => [
+                '<P CLASS="lead" ONCLICK="x()" STYLE="color:red">x</P>',
+                '<p class="lead">x</p>',
+            ],
+            'upper-case javascript href'       => [
+                '<A HREF="JaVaScRiPt:alert(1)" TITLE="t">x</A>',
+                '<a title="t">x</a>',
+            ],
+            'upper-case safe href kept'        => [
+                '<A HREF="https://x.test/">x</A>',
+                '<a href="https://x.test/">x</a>',
+            ],
+            'nested removed tags'              => ['<script><script>x</script></script>y', 'y'],
+            'script inside unwrapped tags'     => ['<div><font><script>x</script>a</font></div>b', 'ab'],
+            'unclosed tags closed'             => ['<p><b>x', '<p><b>x</b></p>'],
+            'misnested tags repaired'          => ['<b><i>x</b></i>', '<b><i>x</i></b>'],
+            'unclosed textarea unwrapped'      => ['<textarea>a<script>x</script>', 'a'],
+            'svg payload removed'              => ['<svg onload=alert(1)><script>x</script></svg>ok', 'ok'],
+            'stray body and html close tags'   => ['</body></html><p>x</p>', '<p>x</p>'],
+            'body wrapper unwrapped'           => ['<body onload=x()>y</body>', 'y'],
         ];
     }
 
