@@ -146,9 +146,14 @@ final class FormContentSanitizer
         }
     }
 
+    /**
+     * Browsers ignore ASCII tab and newline anywhere in a URL and strip
+     * leading C0 controls and spaces, so `java&#9;script:` still runs as
+     * `javascript:`. They are removed before the scheme is checked.
+     */
     private static function isSafeHref(string $value): bool
     {
-        $value = trim($value);
+        $value = (string) preg_replace('/[\x00-\x20]+/', '', $value);
         if ($value === '') {
             return false;
         }

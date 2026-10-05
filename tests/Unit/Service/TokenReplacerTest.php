@@ -10,6 +10,7 @@ use Contenir\FormBuilder\Definition\GroupDefinition;
 use Contenir\FormBuilder\Definition\RowDefinition;
 use Contenir\FormBuilder\Definition\SectionDefinition;
 use Contenir\FormBuilder\Service\TokenReplacer;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -255,6 +256,115 @@ final class TokenReplacerTest extends TestCase
         $result = $replacer->replace('before {entry:fields} after', $form, []);
 
         self::assertSame('before  after', $result);
+    }
+
+    /**
+     * @return array<string, array{string, array<string, mixed>, array<string, mixed>, string}>
+     */
+    public static function htmlEscapingProvider(): array
+    {
+        return [
+            'markup in a field'         => [
+                '<p>{field:name}</p>',
+                ['name' => '<script>alert(1)</script>'],
+                [],
+                '<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>',
+            ],
+            'attribute breakout'        => [
+                '<a title="{field:name}">x</a>',
+                ['name' => '" onmouseover="x'],
+                [],
+                '<a title="&quot; onmouseover=&quot;x">x</a>',
+            ],
+            'single quotes'             => [
+                "<a title='{field:name}'>x</a>",
+                ['name' => "' onclick='x"],
+                [],
+                "<a title='&#039; onclick=&#039;x'>x</a>",
+            ],
+            'ampersand'                 => ['{field:name}', ['name' => 'Tom & Jerry'], [], 'Tom &amp; Jerry'],
+            'multi-value field'         => ['{field:tags}', ['tags' => ['<b>', '<i>']], [], '&lt;b&gt;, &lt;i&gt;'],
+            'entry attribute'           => ['{entry:ip}', [], ['ip' => '<img src=x>'], '&lt;img src=x&gt;'],
+            'invalid UTF-8 is replaced' => ['{field:name}', ['name' => "a\xC3\x28b"], [], "a\u{FFFD}(b"],
+            'unknown token left as-is'  => ['{field:missing}', [], [], '{field:missing}'],
+            'plain value unchanged'     => ['{field:name}', ['name' => 'Alice'], [], 'Alice'],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     * @param array<string, mixed> $entry
+     */
+    #[DataProvider('htmlEscapingProvider')]
+    public function testReplaceForHtmlEscapesResolvedValues(
+        string $template,
+        array $values,
+        array $entry,
+        string $expected,
+    ): void {
+        $result = (new TokenReplacer())->replaceForHtml($template, $this->formWithFields([]), $values, $entry);
+
+        self::assertSame($expected, $result);
+    }
+
+    public function testReplaceForHtmlDoesNotDoubleEscapeTheFieldsTable(): void
+    {
+        $form = $this->formWithFields([
+            new FieldDefinition(id: 1, type: 'text', name: 'name', label: 'Name'),
+        ]);
+
+        $result = (new TokenReplacer())->replaceForHtml('{entry:fields}', $form, ['name' => '<b>Bob</b>']);
+
+        self::assertSame((new TokenReplacer())->replace('{entry:fields}', $form, ['name' => '<b>Bob</b>']), $result);
+        self::assertStringContainsString('&lt;b&gt;Bob&lt;/b&gt;', $result);
+        self::assertStringNotContainsString('&amp;lt;', $result);
+    }
+
+    public function testReplaceForHtmlMatchesTheFieldsTableTokenCaseInsensitively(): void
+    {
+        $form = $this->formWithFields([
+            new FieldDefinition(id: 1, type: 'text', name: 'name', label: 'Name'),
+        ]);
+
+        $result = (new TokenReplacer())->replaceForHtml('{ENTRY:fields}', $form, ['name' => 'Bob']);
+
+        self::assertStringStartsWith('<table', $result);
+    }
+
+    public function testReplaceForHtmlEscapesCustomNamespaceValues(): void
+    {
+        $replacer = new TokenReplacer();
+        $replacer->register('crm', static fn (string $key): string => "<{$key}>");
+
+        self::assertSame('&lt;owner&gt;', $replacer->replaceForHtml('{crm:owner}', $this->formWithFields([]), []));
+    }
+
+    public function testReplaceForHtmlEscapesFormAndSiteValues(): void
+    {
+        $replacer = new TokenReplacer(['base_url' => 'https://example.com/?a=1&b=2']);
+        $form     = new FormDefinition(id: 1, slug: 'contact', title: 'Q&A <draft>');
+
+        $result = $replacer->replaceForHtml('{form:title} {site:base_url}', $form, []);
+
+        self::assertSame('Q&amp;A &lt;draft&gt; https://example.com/?a=1&amp;b=2', $result);
+    }
+
+    public function testReplaceLeavesValuesUnescaped(): void
+    {
+        $result = (new TokenReplacer())->replace('{field:name}', $this->formWithFields([]), ['name' => '<b>&</b>']);
+
+        self::assertSame('<b>&</b>', $result);
+    }
+
+    public function testReplaceForUrlStillEncodesTheFieldsTable(): void
+    {
+        $form = $this->formWithFields([
+            new FieldDefinition(id: 1, type: 'text', name: 'name', label: 'Name'),
+        ]);
+
+        $result = (new TokenReplacer())->replaceForUrl('{entry:fields}', $form, ['name' => 'Bob']);
+
+        self::assertStringStartsWith('%3Ctable', $result);
     }
 
     /**

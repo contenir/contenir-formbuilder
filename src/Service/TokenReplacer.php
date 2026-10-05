@@ -82,13 +82,44 @@ class TokenReplacer
      */
     public function replaceForUrl(string $template, FormDefinition $form, array $values, array $entry = []): string
     {
-        return $this->dispatch($template, $form, $values, $entry, 'rawurlencode');
+        return $this->dispatch(
+            $template,
+            $form,
+            $values,
+            $entry,
+            static fn (string $value): string => rawurlencode($value),
+        );
+    }
+
+    /**
+     * Same as {@see replace()} but HTML-escapes every resolved value, for
+     * expanding a template that is rendered as HTML (e.g. an HTML email
+     * body), so submitted values can't inject markup.
+     *
+     * `{entry:fields}` is substituted unescaped: it is a table this class
+     * renders itself, with every label and value already escaped. Tokens
+     * that fall through are left intact.
+     *
+     * @param array<string, mixed> $values
+     * @param array<string, mixed> $entry
+     */
+    public function replaceForHtml(string $template, FormDefinition $form, array $values, array $entry = []): string
+    {
+        return $this->dispatch(
+            $template,
+            $form,
+            $values,
+            $entry,
+            static fn (string $value, string $tag): string => strtolower($tag) === '{entry:fields}'
+                ? $value
+                : htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+        );
     }
 
     /**
      * @param array<string, mixed> $values
      * @param array<string, mixed> $entry
-     * @param (callable(string): string)|null $postProcess
+     * @param (callable(string, string): string)|null $postProcess Receives the resolved value and the matched token.
      */
     private function dispatch(
         string $template,
@@ -119,7 +150,7 @@ class TokenReplacer
                     return $resolved;
                 }
 
-                return $postProcess($resolved);
+                return $postProcess($resolved, $original);
             },
             $template
         );
