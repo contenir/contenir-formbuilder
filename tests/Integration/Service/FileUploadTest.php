@@ -172,6 +172,15 @@ final class FileUploadTest extends TestCase
     }
 
     /**
+     * Treats any existing file as an HTTP upload, so the upload path runs
+     * outside a real request.
+     */
+    private function acceptingService(?StorageManager $manager): FormSubmissionService
+    {
+        return new FormSubmissionService($this->builder, $manager, is_file(...));
+    }
+
+    /**
      * @param array<string, mixed> $override
      *
      * @return array<string, mixed>
@@ -200,15 +209,6 @@ final class FileUploadTest extends TestCase
         $csrf = $this->builder->build($form)->get(FormBuilderService::CSRF_NAME)->getValue();
 
         return [...$values, FormBuilderService::CSRF_NAME => $csrf];
-    }
-
-    /**
-     * Treats any existing file as an HTTP upload, so the upload path runs
-     * outside a real request.
-     */
-    private function acceptingService(?StorageManager $manager): FormSubmissionService
-    {
-        return new FormSubmissionService($this->builder, $manager, is_file(...));
     }
 
     private function uploadForm(): FormDefinition
