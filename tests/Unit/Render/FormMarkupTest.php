@@ -122,6 +122,12 @@ final class FormMarkupTest extends TestCase
         $arraySubmit = new Element\Submit('_submit', ['label' => 'Fallback']);
         $arraySubmit->setValue(['x']);
 
+        $falseSubmit = new Element\Submit('_submit', ['label' => 'Fallback']);
+        $falseSubmit->setValue(false);
+
+        $paddedClassCheckbox = new Element\Checkbox('agree');
+        $paddedClassCheckbox->setAttribute('class', ' formbuilder__control ');
+
         return [
             'text input'                => [
                 $text,
@@ -176,6 +182,11 @@ final class FormMarkupTest extends TestCase
             'submit uses label'         => [$submit, '<input type="submit" name="_submit" value="Send">'],
             'submit uses value'         => [$submitWithValue, '<input type="submit" name="_submit" value="Go">'],
             'submit non-scalar value'   => [$arraySubmit, '<input type="submit" name="_submit" value="Fallback">'],
+            'submit false value'        => [$falseSubmit, '<input type="submit" name="_submit" value="Fallback">'],
+            'checkbox padded class'     => [
+                $paddedClassCheckbox,
+                '<input type="hidden" name="agree" value="0"><input type="checkbox" name="agree" class="formbuilder__control--checkbox" id="agree" value="1">',
+            ],
         ];
     }
 
@@ -219,6 +230,7 @@ final class FormMarkupTest extends TestCase
     public function fileInputSwitchesTheEncoding(): void
     {
         $form = new Form();
+        $form->add(new Element\Text('name'));
         $form->add(new Element\File('cv'));
 
         static::assertStringContainsString(
@@ -245,6 +257,7 @@ final class FormMarkupTest extends TestCase
     public function marksConditionalColumns(?array $rule, string $expected): void
     {
         $form = new Form();
+        $form->add(new Element\Text('lead'));
         $form->add(new Element\Text('mode'));
         $form->get('mode')->setValue('a');
         $form->add(new Element\Text('extra'));
@@ -359,13 +372,63 @@ final class FormMarkupTest extends TestCase
     }
 
     #[Test]
+    public function rendersEveryRowOfAGroup(): void
+    {
+        $form = new Form();
+        $form->add(new Element\Text('first'));
+        $form->add(new Element\Text('second'));
+        $definition = F::formWithSections([new SectionDefinition(
+            id: null,
+            key: 's',
+            groups: [new GroupDefinition(
+                id: null,
+                rows: [
+                    new RowDefinition(
+                        id: null,
+                        fields: [F::field('text', 'first', showLabel: false)],
+                    ),
+                    new RowDefinition(
+                        id: null,
+                        fields: [F::field('text', 'second', showLabel: false)],
+                    ),
+                ],
+            )],
+        )]);
+
+        $html = (new FormMarkup())->render($definition, $form);
+
+        static::assertStringContainsString(
+            '<input type="text" name="first" id="first"></div></div></div><div class="formbuilder__row">'
+                . '<div class="formbuilder__field"><div class="formbuilder__element"><input type="text" name="second"',
+            $html,
+        );
+    }
+
+    #[Test]
+    public function rendersFieldsThatFollowAContentBlock(): void
+    {
+        $form = new Form();
+        $form->add(new Element\Text('name'));
+        $definition = F::form([
+            F::field('content', 'intro', options: ['html' => 'Hi']),
+            F::field('text', 'name', showLabel: false),
+        ]);
+
+        static::assertStringContainsString(
+            '<div class="formbuilder__content">Hi</div></div><div class="formbuilder__field">'
+                . '<div class="formbuilder__element"><input type="text" name="name" id="name"></div></div>',
+            (new FormMarkup())->render($definition, $form),
+        );
+    }
+
+    #[Test]
     public function rendersLabelsDescriptionsAndErrorsAroundTheInput(): void
     {
         $form = new Form();
         $form->add(new Element\Text('name'));
         $form->get('name')->setMessages([
             'isEmpty' => 'Required <field>',
-            'nested'  => ['a', ['b']],
+            'nested'  => ['a', ['b'], 'c'],
             'odd'     => ['x' => 1],
         ]);
         $definition = F::form([F::field(
@@ -381,7 +444,7 @@ final class FormMarkupTest extends TestCase
         static::assertStringContainsString(
             '<div class="formbuilder__field"><label class="formbuilder__label formbuilder__label--required" for="name">Your name</label>'
                 . '<div class="formbuilder__element"><input type="text" name="name" id="name"></div>'
-                . '<ul class="formbuilder__errors"><li>Required &lt;field&gt;</li><li>a</li><li>1</li></ul>'
+                . '<ul class="formbuilder__errors"><li>Required &lt;field&gt;</li><li>a</li><li>c</li><li>1</li></ul>'
                 . '<p class="formbuilder__description">As on &lt;ID&gt;</p></div>',
             $html,
         );

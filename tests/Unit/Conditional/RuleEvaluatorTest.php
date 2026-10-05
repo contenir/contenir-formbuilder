@@ -42,6 +42,11 @@ final class RuleEvaluatorTest extends TestCase
             'object value counts as empty'       => [['op' => 'is_empty'], new stdClass(), true],
             'object value never equals a string' => [['op' => 'equals', 'value' => ''], new stdClass(), true],
             'boolean true compares as one'       => [['op' => 'equals', 'value' => '1'], true, true],
+            'boolean false counts as empty'      => [['op' => 'is_empty'], false, true],
+            'non-empty list is not empty'        => [['op' => 'is_empty'], ['a'], false],
+            'equals casts the expectation'       => [['op' => 'equals', 'value' => 1], ['1'], true],
+            'equals casts each entry'            => [['op' => 'equals', 'value' => '1'], [1], true],
+            'equals empty against filled list'   => [['op' => 'equals', 'value' => ''], ['a'], false],
         ];
     }
 

@@ -10,6 +10,10 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
+use function libxml_clear_errors;
+use function libxml_get_errors;
+use function libxml_use_internal_errors;
+
 #[Group('unit')]
 final class FormContentSanitizerTest extends TestCase
 {
@@ -48,6 +52,11 @@ final class FormContentSanitizerTest extends TestCase
                 '<a href="mailto:a@b.c">m</a><a href="tel:+61">t</a>',
                 '<a href="mailto:a@b.c">m</a><a href="tel:+61">t</a>',
             ],
+            'upper-case safe scheme kept'      => [
+                '<a href="HTTPS://example.com">x</a>',
+                '<a href="HTTPS://example.com">x</a>',
+            ],
+            'relative href with a colon kept'  => ['<a href="/search?q=a:b">x</a>', '<a href="/search?q=a:b">x</a>'],
             'javascript href removed'          => ['<a href="javascript:alert(1)">x</a>', '<a>x</a>'],
             'upper-case scheme removed'        => ['<a href="JaVaScRiPt:alert(1)">x</a>', '<a>x</a>'],
             'tab inside scheme removed'        => ['<a href="java&#9;script:alert(1)">x</a>', '<a>x</a>'],
@@ -60,9 +69,36 @@ final class FormContentSanitizerTest extends TestCase
     }
 
     #[Test]
+    public function clearsTheParserErrorsItCaused(): void
+    {
+        $previous = libxml_use_internal_errors(use_errors: true);
+        libxml_clear_errors();
+
+        try {
+            FormContentSanitizer::sanitize('<p>broken <b>markup</p></i>');
+            static::assertSame([], libxml_get_errors());
+        } finally {
+            libxml_use_internal_errors($previous);
+        }
+    }
+
+    #[Test]
     #[DataProvider('htmlProvider')]
     public function keepsOnlyTheAllowList(string $html, string $expected): void
     {
         static::assertSame($expected, FormContentSanitizer::sanitize($html));
+    }
+
+    #[Test]
+    public function restoresTheCallersLibxmlErrorHandling(): void
+    {
+        $previous = libxml_use_internal_errors(use_errors: false);
+
+        try {
+            FormContentSanitizer::sanitize('<p>broken <b>markup</p></i>');
+            static::assertFalse(libxml_use_internal_errors());
+        } finally {
+            libxml_use_internal_errors($previous);
+        }
     }
 }

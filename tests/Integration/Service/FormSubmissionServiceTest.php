@@ -101,6 +101,19 @@ final class FormSubmissionServiceTest extends TestCase
     }
 
     #[Test]
+    public function hiddenRequiredFieldDoesNotBlockTheSubmission(): void
+    {
+        $form = $this->conditionalForm();
+
+        $result = (new FormSubmissionService($this->builder))->submit(
+            $form,
+            $this->post($form, ['contact_by' => 'email', 'phone' => '', 'note' => 'hi']),
+        );
+
+        static::assertTrue($result->valid);
+    }
+
+    #[Test]
     #[DataProvider('honeypotProvider')]
     public function honeypotSubmissionIsFlaggedAsSpamAndStillNotified(mixed $honeypot): void
     {
@@ -120,6 +133,42 @@ final class FormSubmissionServiceTest extends TestCase
         static::assertTrue($result->isSpam);
         static::assertSame(['name' => '', 'email' => 'not-an-email'], $result->values);
         static::assertTrue($observer->registries[0]['spam']);
+    }
+
+    #[Test]
+    public function invalidSpamSubmissionDropsHiddenFieldValues(): void
+    {
+        $form = $this->conditionalForm();
+
+        $result = (new FormSubmissionService($this->builder))->submit(
+            $form,
+            $this->post($form, [
+                'contact_by'                      => 'email',
+                'phone'                           => 'leftover',
+                'note'                            => '',
+                FormBuilderService::HONEYPOT_NAME => 'bot',
+            ]),
+        );
+
+        static::assertSame(['contact_by' => 'email', 'note' => ''], $result->values);
+    }
+
+    #[Test]
+    public function invalidSpamSubmissionKeepsValuesForConditionalFieldsWithoutAnInput(): void
+    {
+        $form = F::form([
+            F::field('text', 'name', required: true),
+            F::field('content', 'intro', conditional: [
+                'show_when' => ['all' => [['field' => 'name', 'op' => 'equals', 'value' => 'x']]],
+            ]),
+        ]);
+
+        $result = (new FormSubmissionService($this->builder))->submit(
+            $form,
+            $this->post($form, ['name' => '', 'intro' => 'posted', FormBuilderService::HONEYPOT_NAME => 'bot']),
+        );
+
+        static::assertSame(['name' => '', 'intro' => 'posted'], $result->values);
     }
 
     #[Test]
@@ -176,6 +225,37 @@ final class FormSubmissionServiceTest extends TestCase
     }
 
     #[Test]
+    public function spamHoneypotValueIsNotEchoedBackIntoTheForm(): void
+    {
+        $form   = $this->contactForm();
+        $post   = $this->post($form, ['name' => 'Ann', FormBuilderService::HONEYPOT_NAME => 'bot']);
+        $result = (new FormSubmissionService($this->builder))->submit($form, $post);
+
+        static::assertNull($result->form->get(FormBuilderService::HONEYPOT_NAME)->getValue());
+    }
+
+    /**
+     * Laminas reads an integer key in a validation group as a fieldset name,
+     * so the group must stay a list: the numeric field name "5" matches the
+     * key the last element would keep if the group were not re-indexed.
+     */
+    #[Test]
+    public function validationGroupStaysAListWhenAFieldIsHidden(): void
+    {
+        $form = F::form([
+            F::field('text', 'extra', conditional: [
+                'show_when' => ['all' => [['field' => 'note', 'op' => 'equals', 'value' => 'never']]],
+            ]),
+            F::field('text', 'note', required: true),
+            F::field('text', '5'),
+        ]);
+
+        $result = (new FormSubmissionService($this->builder))->submit($form, $this->post($form, ['note' => 'hi']));
+
+        static::assertTrue($result->valid);
+    }
+
+    #[Test]
     public function validSpamSubmissionUsesTheValidatedValues(): void
     {
         $form   = $this->contactForm();
@@ -213,6 +293,16 @@ final class FormSubmissionServiceTest extends TestCase
         static::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $registry['entry']['date']);
     }
 
+    #[Test]
+    public function whitespaceHoneypotIsNotSpam(): void
+    {
+        $form   = $this->contactForm();
+        $post   = $this->post($form, ['name' => 'Ann', FormBuilderService::HONEYPOT_NAME => " \t "]);
+        $result = (new FormSubmissionService($this->builder))->submit($form, $post);
+
+        static::assertSame([true, false], [$result->valid, $result->isSpam]);
+    }
+
     #[Override]
     protected function setUp(): void
     {
@@ -224,6 +314,17 @@ final class FormSubmissionServiceTest extends TestCase
     protected function tearDown(): void
     {
         $this->tearDownInMemorySession();
+    }
+
+    private function conditionalForm(): FormDefinition
+    {
+        return F::form([
+            F::field('select', 'contact_by', options: ['choices' => [['value' => 'email'], ['value' => 'phone']]]),
+            F::field('text', 'phone', required: true, conditional: [
+                'show_when' => ['all' => [['field' => 'contact_by', 'op' => 'equals', 'value' => 'phone']]],
+            ]),
+            F::field('text', 'note', required: true),
+        ]);
     }
 
     private function contactForm(): FormDefinition

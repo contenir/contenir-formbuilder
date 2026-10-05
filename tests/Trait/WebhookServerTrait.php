@@ -11,9 +11,11 @@ use function fclose;
 use function file_get_contents;
 use function fsockopen;
 use function glob;
+use function hrtime;
 use function json_decode;
 use function parse_url;
 use function proc_close;
+use function proc_get_status;
 use function proc_open;
 use function proc_terminate;
 use function restore_error_handler;
@@ -37,43 +39,19 @@ trait WebhookServerTrait
 
     private string $serverUrl;
 
+    /**
+     * The server runs without php.ini (`-n`): the router needs no extensions,
+     * and skipping them (Xdebug above all) keeps start-up fast when many
+     * suites run in parallel, as under mutation testing. A server that exits
+     * before it accepts connections (another process took the port first) is
+     * retried on a fresh port.
+     */
     protected function setUpWebhookServer(): void
     {
-        $socket = stream_socket_server('tcp://127.0.0.1:0');
-        if (false === $socket) {
-            throw new RuntimeException('Could not reserve a port for the webhook server.');
-        }
-
-        $address = (string) stream_socket_get_name($socket, remote: false);
-        fclose($socket);
-        $this->serverUrl = "http://{$address}";
-
-        $process = proc_open(
-            [PHP_BINARY, '-S', $address, __DIR__ . '/../TestAsset/Http/webhook-router.php'],
-            [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
-            $_pipes,
-            env_vars: ['WEBHOOK_LOG_DIR' => $this->tmpDir],
-        );
-        if (false === $process) {
-            throw new RuntimeException('Could not start the webhook server.');
-        }
-
-        $this->server = $process;
-        $port         = (int) parse_url($this->serverUrl, PHP_URL_PORT);
-        for ($attempt = 0; $attempt < 100; ++$attempt) {
-            set_error_handler(static fn(): bool => true);
-            try {
-                $connection = fsockopen('127.0.0.1', $port);
-            } finally {
-                restore_error_handler();
-            }
-
-            if (false !== $connection) {
-                fclose($connection);
+        for ($attempt = 0; $attempt < 3; ++$attempt) {
+            if ($this->startWebhookServer()) {
                 return;
             }
-
-            usleep(20_000);
         }
 
         throw new RuntimeException('The webhook server did not start.');
@@ -111,5 +89,50 @@ trait WebhookServerTrait
         $files = glob("{$this->tmpDir}/request-*.json");
 
         return false === $files ? [] : $files;
+    }
+
+    private function startWebhookServer(): bool
+    {
+        $socket = stream_socket_server('tcp://127.0.0.1:0');
+        if (false === $socket) {
+            throw new RuntimeException('Could not reserve a port for the webhook server.');
+        }
+
+        $address = (string) stream_socket_get_name($socket, remote: false);
+        fclose($socket);
+        $this->serverUrl = "http://{$address}";
+
+        $process = proc_open(
+            [PHP_BINARY, '-n', '-S', $address, __DIR__ . '/../TestAsset/Http/webhook-router.php'],
+            [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+            $_pipes,
+            env_vars: ['WEBHOOK_LOG_DIR' => $this->tmpDir],
+        );
+        if (false === $process) {
+            throw new RuntimeException('Could not start the webhook server.');
+        }
+
+        $this->server = $process;
+        $port         = (int) parse_url($this->serverUrl, PHP_URL_PORT);
+        $deadline     = hrtime(true) + 10_000_000_000;
+        while (hrtime(true) < $deadline && proc_get_status($process)['running']) {
+            set_error_handler(static fn(): bool => true);
+            try {
+                $connection = fsockopen('127.0.0.1', $port);
+            } finally {
+                restore_error_handler();
+            }
+
+            if (false !== $connection) {
+                fclose($connection);
+                return true;
+            }
+
+            usleep(10_000);
+        }
+
+        $this->tearDownWebhookServer();
+
+        return false;
     }
 }

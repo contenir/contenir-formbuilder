@@ -113,6 +113,16 @@ final class ConditionalRulesParserTest extends TestCase
     }
 
     #[Test]
+    public function trimsTheFieldName(): void
+    {
+        $out = ConditionalRulesParser::parse([
+            'conditions' => [['field' => '  a ', 'op' => 'equals', 'value' => ' x ']],
+        ]);
+
+        static::assertSame(['show_when' => ['all' => [['field' => 'a', 'op' => 'equals', 'value' => ' x ']]]], $out);
+    }
+
+    #[Test]
     public function unknownCombinatorFallsBackToAll(): void
     {
         $out = ConditionalRulesParser::parse([

@@ -117,6 +117,7 @@ composer static-analysis   # mago analyze
 composer test              # unit suite: no I/O, no session, no network
 composer test-integration  # integration suite: in-memory session, temp files, a local HTTP server
 composer test-coverage     # both suites, clover.xml for Codecov
+composer mutation-test     # Infection over both suites (needs Xdebug or PCOV)
 ```
 
 The webhook integration tests start PHP's built-in web server on a free

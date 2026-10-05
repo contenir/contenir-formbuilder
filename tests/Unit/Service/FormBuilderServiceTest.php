@@ -18,6 +18,7 @@ use Laminas\InputFilter\Input;
 use Laminas\InputFilter\InputFilter;
 use Laminas\Validator\EmailAddress;
 use Laminas\Validator\Identical;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -31,6 +32,20 @@ use function array_values;
 #[Group('unit')]
 final class FormBuilderServiceTest extends TestCase
 {
+    /**
+     * @return array<string, array{string, string, bool}>
+     */
+    public static function blankValueProvider(): array
+    {
+        return [
+            'whitespace honeypot'                 => [FormBuilderService::HONEYPOT_NAME, '  ', true],
+            'whitespace submit'                   => ['_submit', '  ', true],
+            'whitespace optional field'           => ['optional', '  ', true],
+            'empty field with required rule'      => ['rule', '', false],
+            'whitespace field with required rule' => ['rule', '  ', false],
+        ];
+    }
+
     #[Test]
     public function addsAnElementAndInputPerDataField(): void
     {
@@ -64,8 +79,9 @@ final class FormBuilderServiceTest extends TestCase
         static::assertInstanceOf(Text::class, $honeypot);
         static::assertInstanceOf(Submit::class, $submit);
         static::assertSame(
-            ['off', '-1', 'true', 'Send', 'Send', 'btn btn--primary'],
+            ['', 'off', '-1', 'true', 'Send', 'Send', 'btn btn--primary'],
             [
+                $honeypot->getLabel(),
                 $honeypot->getAttribute('autocomplete'),
                 $honeypot->getAttribute('tabindex'),
                 $honeypot->getAttribute('aria-hidden'),
@@ -92,6 +108,21 @@ final class FormBuilderServiceTest extends TestCase
     }
 
     #[Test]
+    #[DataProvider('blankValueProvider')]
+    public function blankValuesPassOnlyWhereEmptyIsAllowed(string $name, string $value, bool $valid): void
+    {
+        $filter = $this->inputFilter($this->builder()->build(F::form([
+            F::field('text', 'rule', validators: [new ValidatorDefinition('required')]),
+            F::field('text', 'optional'),
+        ])));
+        $input = $filter->get($name);
+        static::assertInstanceOf(Input::class, $input);
+        $input->setValue($value);
+
+        static::assertSame($valid, $input->isValid());
+    }
+
+    #[Test]
     public function buildsAPostFormWithTheBuilderClasses(): void
     {
         $form = $this->builder()->build(F::form());
@@ -101,6 +132,20 @@ final class FormBuilderServiceTest extends TestCase
             ['post', 'formbuilder__form formbuilder__form--stacked', 'on'],
             [$form->getAttribute('method'), $form->getAttribute('class'), $form->getAttribute('autocomplete')],
         );
+    }
+
+    #[Test]
+    public function confirmValidatorAcceptsAMatchingTargetValue(): void
+    {
+        $filter = $this->inputFilter($this->builder()->build(F::form([
+            F::field('email', 'email'),
+            F::field('email', 'email_again', validators: [new ValidatorDefinition('confirm', ['field' => 'email'])]),
+        ])));
+        $input = $filter->get('email_again');
+        static::assertInstanceOf(Input::class, $input);
+        $input->setValue('a@b.c');
+
+        static::assertTrue($input->isValid(['email' => 'a@b.c']));
     }
 
     #[Test]
@@ -140,6 +185,15 @@ final class FormBuilderServiceTest extends TestCase
             $this->validatorClasses($noTarget),
             $this->validatorClasses($noMessage),
         ]);
+    }
+
+    #[Test]
+    public function csrfElementUsesTheFormBuilderSalt(): void
+    {
+        $csrf = $this->builder()->build(F::form())->get(FormBuilderService::CSRF_NAME);
+
+        static::assertInstanceOf(Csrf::class, $csrf);
+        static::assertSame('contenir_formbuilder', $csrf->getCsrfValidator()->getSalt());
     }
 
     #[Test]

@@ -44,6 +44,17 @@ final class FileUploadTest extends TestCase
     /**
      * @return array<string, array{array<string, mixed>}>
      */
+    public static function precedingUploadProvider(): array
+    {
+        return [
+            'no upload for the earlier field'     => [[]],
+            'failed upload for the earlier field' => [['photo' => ['error' => UPLOAD_ERR_NO_FILE]]],
+        ];
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>}>
+     */
     public static function skippedUploadProvider(): array
     {
         return [
@@ -53,6 +64,36 @@ final class FileUploadTest extends TestCase
             'non-string temp path' => [['tmp_name' => ['x']]],
             'not an uploaded file' => [['tmp_name' => '/nonexistent/upload']],
         ];
+    }
+
+    #[Test]
+    public function emptyClientTypeIsLeftToTheStorageBackend(): void
+    {
+        $form    = $this->uploadForm();
+        $service = $this->acceptingService($this->manager);
+
+        $service->submit($form, $this->post($form), ['cv' => $this->file(['type' => ''])]);
+
+        /**
+         * contenir/storage 0.x falls back to application/octet-stream, 2.x
+         * sniffs the content; either way the empty client type is not used.
+         */
+        static::assertMatchesRegularExpression('#^[a-z]+/[a-z0-9.+-]+$#', $this->storedMimeTypes()[0] ?? '');
+    }
+
+    /**
+     * @param array<string, mixed> $earlier
+     */
+    #[Test]
+    #[DataProvider('precedingUploadProvider')]
+    public function laterFileFieldsAreStoredAfterASkippedOne(array $earlier): void
+    {
+        $form    = F::form([F::field('text', 'name'), F::field('file', 'photo'), F::field('file', 'cv')]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit($form, $this->post($form), [...$earlier, 'cv' => $this->file()]);
+
+        static::assertSame('forms/contact/cv.pdf', $result->values['cv']);
     }
 
     #[Test]
@@ -94,6 +135,17 @@ final class FileUploadTest extends TestCase
     }
 
     #[Test]
+    public function storesTheClientMimeType(): void
+    {
+        $form    = $this->uploadForm();
+        $service = $this->acceptingService($this->manager);
+
+        $service->submit($form, $this->post($form), ['cv' => $this->file()]);
+
+        static::assertSame(['application/pdf'], $this->storedMimeTypes());
+    }
+
+    #[Test]
     public function storesTheUploadUnderTheFormSlugAndSubmitsItsPath(): void
     {
         $form    = $this->uploadForm();
@@ -103,6 +155,20 @@ final class FileUploadTest extends TestCase
 
         static::assertSame('forms/contact/cv.pdf', $result->values['cv']);
         static::assertTrue($this->storage->exists('forms/contact/cv.pdf'));
+    }
+
+    #[Test]
+    public function surroundingSlashesInTheSlugAreTrimmed(): void
+    {
+        $form    = new FormDefinition(1, '/contact/', 'Contact', sections: [F::section('main', [F::field(
+            'file',
+            'cv',
+        )])]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit($form, $this->post($form), ['cv' => $this->file()]);
+
+        static::assertSame('forms/contact/cv.pdf', $result->values['cv']);
     }
 
     /**
@@ -214,6 +280,19 @@ final class FileUploadTest extends TestCase
         $csrf = $this->builder->build($form)->get(FormBuilderService::CSRF_NAME)->getValue();
 
         return [...$values, FormBuilderService::CSRF_NAME => $csrf];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function storedMimeTypes(): array
+    {
+        $mimes = [];
+        foreach ($this->storage->list('forms/contact') as $entry) {
+            $mimes[] = $entry->mime;
+        }
+
+        return $mimes;
     }
 
     private function uploadForm(): FormDefinition

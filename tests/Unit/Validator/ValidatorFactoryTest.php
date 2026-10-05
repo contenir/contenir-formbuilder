@@ -46,13 +46,20 @@ final class ValidatorFactoryTest extends TestCase
             'url rejects bare hostname'         => ['url', [], 'example.com', false],
             'url rejects other schemes'         => ['url', [], 'ftp://example.com', false],
             'url rejects non-strings'           => ['url', [], 42, false],
+            'url scheme is case-insensitive'    => ['url', [], 'HTTPS://example.com', true],
+            'url must start with the scheme'    => ['url', [], 'ftp://example.com/?to=http://x', false],
             'length within min and max'         => ['string_length', ['min' => '2', 'max' => '4'], 'abc', true],
             'length above max'                  => ['string_length', ['min' => 2, 'max' => 4], 'abcde', false],
+            'length below min'                  => ['string_length', ['min' => '2', 'max' => '4'], 'a', false],
             'length without options'            => ['string_length', [], 'any length at all', true],
+            'length allows empty without min'   => ['string_length', [], '', true],
             'non-numeric max is ignored'        => ['string_length', ['max' => 'many'], 'abcdef', true],
             'between inclusive by default'      => ['between', ['min' => 1, 'max' => 5], 5, true],
             'between exclusive from checkbox 0' => ['between', ['min' => 1, 'max' => 5, 'inclusive' => '0'], 5, false],
             'between open-ended maximum'        => ['between', ['min' => 1], 1000, true],
+            'between below min'                 => ['between', ['min' => 3, 'max' => 5], 2, false],
+            'between minimum defaults to zero'  => ['between', ['max' => 5], 0, true],
+            'between rejects below zero'        => ['between', ['max' => 5], -1, false],
             'regex pattern applied'             => ['regex', ['pattern' => '/^[0-9]+$/'], 'abc', false],
             'regex without pattern matches all' => ['regex', ['pattern' => ''], 'abc', true],
         ];
@@ -137,6 +144,22 @@ final class ValidatorFactoryTest extends TestCase
         static::assertNotNull($validator);
         $validator->isValid('example.com');
         static::assertSame(['The input is not a valid http or https URL'], array_values($validator->getMessages()));
+    }
+
+    #[Test]
+    public function vocabularyFlagsTheTypesThatNeedOptions(): void
+    {
+        static::assertSame(
+            [
+                'string_length' => true,
+                'between'       => true,
+                'email'         => false,
+                'url'           => false,
+                'regex'         => true,
+                'confirm'       => true,
+            ],
+            array_column(ValidatorFactory::vocabulary(), 'requires_options', 'type'),
+        );
     }
 
     #[Test]
