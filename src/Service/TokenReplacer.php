@@ -14,10 +14,12 @@ use function is_array;
 use function is_scalar;
 use function nl2br;
 use function preg_replace_callback;
+use function rawurlencode;
 use function sprintf;
 use function strtolower;
 
 use const ENT_QUOTES;
+use const ENT_SUBSTITUTE;
 
 /**
  * Substitutes `{namespace:key}` merge tags inside notification templates.
@@ -113,6 +115,31 @@ final class TokenReplacer
     }
 
     /**
+     * Same as {@see replace()} but HTML-escapes every resolved value, for
+     * expanding a template that is rendered as HTML (e.g. an HTML email
+     * body), so submitted values can't inject markup.
+     *
+     * `{entry:fields}` is substituted unescaped: it is a table this class
+     * renders itself, with every label and value already escaped. Tokens
+     * that fall through are left intact.
+     *
+     * @param array<string, mixed> $values
+     * @param array<string, mixed> $entry
+     */
+    public function replaceForHtml(string $template, FormDefinition $form, array $values, array $entry = []): string
+    {
+        return $this->dispatch(
+            $template,
+            $form,
+            $values,
+            $entry,
+            static fn(string $value, string $tag): string => '{entry:fields}' === strtolower($tag)
+                ? $value
+                : htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, encoding: 'UTF-8'),
+        );
+    }
+
+    /**
      * Same as {@see replace()} but URL-encodes resolved values via
      * `rawurlencode`. Use when a template is being expanded into a URL
      * (e.g. a custom redirect URL) so submitted field values can't
@@ -124,16 +151,24 @@ final class TokenReplacer
      *
      * @param array<string, mixed> $values
      * @param array<string, mixed> $entry
+     *
+     * @mago-expect lint:prefer-first-class-callable The callback also receives the matched tag, which rawurlencode(...) would reject as an extra argument.
      */
     public function replaceForUrl(string $template, FormDefinition $form, array $values, array $entry = []): string
     {
-        return $this->dispatch($template, $form, $values, $entry, 'rawurlencode');
+        return $this->dispatch(
+            $template,
+            $form,
+            $values,
+            $entry,
+            static fn(string $value): string => rawurlencode($value),
+        );
     }
 
     /**
      * @param array<string, mixed> $values
      * @param array<string, mixed> $entry
-     * @param (callable(string): string)|null $postProcess
+     * @param (callable(string, string): string)|null $postProcess Receives the resolved value and the matched token.
      *
      * @mago-expect analysis:possibly-undefined-string-array-index The pattern's named groups always participate in a match.
      * @mago-expect analysis:possibly-undefined-int-array-index Index 0 always holds the whole match.
@@ -168,8 +203,7 @@ final class TokenReplacer
                 if (null === $postProcess || $resolved === $original) {
                     return $resolved;
                 }
-
-                return $postProcess($resolved);
+                return $postProcess($resolved, $original);
             },
             $template,
         );

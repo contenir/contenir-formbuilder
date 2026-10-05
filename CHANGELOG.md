@@ -4,7 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## [2.0.0] - Unreleased
+## [2.1.0] - Unreleased
+
+### Security
+
+- Added `TokenReplacer::replaceForHtml()`, which HTML-escapes every resolved
+  merge-tag value (`{entry:fields}` excepted, as it is already escaped). Use it
+  for any template rendered as HTML: `replace()` inserts submitted values
+  as-is, so an HTML notification body built with it let a visitor inject
+  markup. contenir/formbuilder-laminas-mvc 2.1 uses it for HTML email bodies.
+
+## [2.0.0] - 2026-10-05
 
 The public API keeps its shape. The major version marks the move to PHP 8.3+
 and the php-db QA toolchain shared by all Contenir 2.x packages, typed class

@@ -9,7 +9,16 @@ $replacer->register('settings', fn (string $key): ?string => $settings[$key] ?? 
 
 $replacer->replace('Hi {field:name}, re: {form:title}', $definition, $values, $entry);
 $replacer->replaceForUrl('/thanks?name={field:name}', $definition, $values, $entry); // rawurlencode()d
+$replacer->replaceForHtml('<p>Hi {field:name}</p>', $definition, $values, $entry); // htmlspecialchars()d
 ```
+
+Use the method that matches where the result goes:
+
+| Method | Use for | Resolved values are |
+| --- | --- | --- |
+| `replace()` | Plain text: subjects, plain-text bodies, addresses | Inserted as submitted |
+| `replaceForHtml()` | Anything rendered as HTML, such as an HTML email body | HTML-escaped (`{entry:fields}` excepted: it is already escaped) |
+| `replaceForUrl()` | Redirect URLs | `rawurlencode()`d |
 
 | Tag | Resolves to |
 | --- | --- |
@@ -26,5 +35,6 @@ $replacer->replaceForUrl('/thanks?name={field:name}', $definition, $values, $ent
   replace it.
 - `{entry:fields}` skips `hidden` fields and `content` blocks. Empty values show
   an em dash, checkboxes show Yes/No and textareas keep line breaks.
-- `{field:*}` values are inserted as submitted. Escape the result if the
-  template is HTML and values come from the public.
+- `replace()` inserts `{field:*}` values as submitted. Never use it for a
+  template rendered as HTML: use `replaceForHtml()`, or a visitor can inject
+  markup into the result.
