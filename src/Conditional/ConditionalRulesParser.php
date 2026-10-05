@@ -34,7 +34,7 @@ use function trim;
  *
  * @api
  */
-class ConditionalRulesParser
+final class ConditionalRulesParser
 {
     private const array VALID_OPS = [
         RuleEvaluator::OP_EQUALS,

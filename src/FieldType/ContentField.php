@@ -23,7 +23,7 @@ use Override;
  *
  * @api
  */
-class ContentField extends AbstractFieldType
+final class ContentField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

@@ -2,6 +2,11 @@
 
 ## FormBuilderService
 
+`FormBuilderService` implements `FormBuilderInterface`
+(`build(FormDefinition): FormInterface`). To customise construction, implement
+the interface (decorating `FormBuilderService` if useful) and pass your builder
+to `FormSubmissionService`; the concrete classes are `final`.
+
 ```php
 $builder = new FormBuilderService(new FieldTypeRegistry(), new ValidatorFactory());
 $form    = $builder->build($definition); // a BuilderForm
@@ -91,5 +96,9 @@ Fields of type `file` are stored when:
 - its `tmp_name` is an HTTP upload (`is_uploaded_file()`).
 
 Files go to `forms/<form slug>/` through `StorageInterface::store()`. Without
-a storage manager, uploads are skipped silently. The upload check is the
-protected `isUploadedFile(string $path): bool`, which subclasses may override.
+a storage manager, uploads are skipped silently. The upload check can be
+replaced through the constructor's third argument:
+
+```php
+$service = new FormSubmissionService($builder, $storage, fn (string $path): bool => is_file($path));
+```

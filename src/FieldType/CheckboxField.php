@@ -12,7 +12,7 @@ use Override;
 /**
  * @api
  */
-class CheckboxField extends AbstractFieldType
+final class CheckboxField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

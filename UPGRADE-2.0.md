@@ -18,6 +18,53 @@ composer require contenir/formbuilder:^2.0
 Projects that must stay on PHP 8.1 or 8.2 can keep using `^0.1`, which is
 maintained on the `0.x` branch.
 
+## Final classes
+
+Every concrete class is now `final`. Extend through the interfaces and
+abstract classes instead:
+
+| To customise | 0.x | 2.0 |
+| --- | --- | --- |
+| A field type | extend `TextField`, `SelectField`, … | extend `AbstractFieldType` or implement `FieldTypeInterface`, and `register()` it |
+| Form construction | extend `FormBuilderService` | implement the new `Service\FormBuilderInterface`; `FormSubmissionService` accepts any implementation |
+| The upload check | (none) | pass a `Closure(string): bool` as `FormSubmissionService`'s third argument |
+| Merge tags | extend `TokenReplacer` | `TokenReplacer::register()` a namespace resolver |
+| Escaping in `FormMarkup` | extend `FormMarkup` | `FormMarkup::setEscaper()` |
+| Submission observers | extend `WebhookRegistrar` | implement `SplObserver` |
+
+```php
+// 0.x
+class MyBuilder extends FormBuilderService
+{
+    public function build(FormDefinition $form): FormInterface
+    {
+        $built = parent::build($form);
+        $built->setAttribute('data-tracking', $form->slug);
+
+        return $built;
+    }
+}
+
+// 2.0: decorate instead of extending
+final class MyBuilder implements FormBuilderInterface
+{
+    public function __construct(private FormBuilderService $inner) {}
+
+    public function build(FormDefinition $form): FormInterface
+    {
+        $built = $this->inner->build($form);
+        $built->setAttribute('data-tracking', $form->slug);
+
+        return $built;
+    }
+}
+
+$service = new FormSubmissionService(new MyBuilder($builder), $storage);
+```
+
+`FormSubmissionService`'s first parameter is now typed `FormBuilderInterface`
+(was `FormBuilderService`); existing callers are unaffected.
+
 ## Typed class constants
 
 Public constants now declare their type. A subclass that redeclares one must
@@ -79,12 +126,8 @@ FormContentSanitizer::sanitize('<a href="java&#9;script:alert(1)">x</a>');
 - Hidden conditional fields are excluded through the validation group only;
   their inputs keep their `required` flag. Code reading the input filter after
   `submit()` sees the original configuration.
-- Observers are notified only when `FormBuilderService::build()` returns a
-  `BuilderForm` (a subclassed builder returning another form used to fail with
-  a `TypeError`).
-- `FormSubmissionService` has a new protected method,
-  `isUploadedFile(string $path): bool`. A subclass that declares a method with
-  that name must make it compatible.
+- Observers are notified only when the builder returns a `BuilderForm` (a
+  builder returning another form used to fail with a `TypeError`).
 
 ## Merge tags and definitions
 

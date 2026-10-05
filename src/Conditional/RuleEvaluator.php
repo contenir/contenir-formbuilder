@@ -36,7 +36,7 @@ use function str_contains;
  * @mago-expect lint:cyclomatic-complexity Kept whole for 2.0 (one operator per match arm, mirrored by the client-side evaluator); splitting it is a proposed follow-up.
  * @mago-expect lint:kan-defect Kept whole for 2.0 (one operator per match arm, mirrored by the client-side evaluator); splitting it is a proposed follow-up.
  */
-class RuleEvaluator
+final class RuleEvaluator
 {
     public const string OP_EQUALS       = 'equals';
     public const string OP_NOT_EQUALS   = 'not_equals';

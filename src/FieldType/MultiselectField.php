@@ -19,7 +19,7 @@ use function is_scalar;
 /**
  * @api
  */
-class MultiselectField extends AbstractFieldType
+final class MultiselectField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

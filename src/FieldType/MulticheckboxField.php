@@ -19,7 +19,7 @@ use function is_scalar;
 /**
  * @api
  */
-class MulticheckboxField extends AbstractFieldType
+final class MulticheckboxField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

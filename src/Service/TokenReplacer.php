@@ -39,7 +39,7 @@ use const ENT_QUOTES;
  * @mago-expect lint:kan-defect Kept whole for 2.0 (one resolver per token namespace); splitting it is a proposed follow-up.
  * @mago-expect lint:too-many-methods Kept whole for 2.0 (one resolver per token namespace); splitting it is a proposed follow-up.
  */
-class TokenReplacer
+final class TokenReplacer
 {
     private const string FIELDS_ROW =
         '<tr>'

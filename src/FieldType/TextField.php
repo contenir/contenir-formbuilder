@@ -17,7 +17,7 @@ use function is_string;
 /**
  * @api
  */
-class TextField extends AbstractFieldType
+final class TextField extends AbstractFieldType
 {
     #[Override]
     public function key(): string

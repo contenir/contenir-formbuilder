@@ -15,7 +15,7 @@ use function is_scalar;
 /**
  * @api
  */
-class SelectField extends AbstractFieldType
+final class SelectField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Contenir\FormBuilder\Tests\Unit\Service;
 
 use ArrayObject;
-use Contenir\FormBuilder\Service\FormBuilderService;
+use Contenir\FormBuilder\Service\FormBuilderInterface;
 use Contenir\FormBuilder\Service\FormSubmissionService;
 use Contenir\FormBuilder\Tests\TestAsset\Factory\FormDefinitionFactory as F;
 use Contenir\FormBuilder\Tests\TestAsset\Observer\RecordingObserver;
@@ -17,7 +17,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Covers builders that return a plain Laminas form rather than a BuilderForm,
- * which a subclassed FormBuilderService may do.
+ * which another FormBuilderInterface implementation may do.
  */
 #[Group('unit')]
 final class FormSubmissionServiceTest extends TestCase
@@ -49,9 +49,9 @@ final class FormSubmissionServiceTest extends TestCase
         static::assertSame([], $observer->subjects);
     }
 
-    private function builderReturning(Form $form): FormBuilderService
+    private function builderReturning(Form $form): FormBuilderInterface
     {
-        $builder = $this->createStub(FormBuilderService::class);
+        $builder = $this->createStub(FormBuilderInterface::class);
         $builder->method('build')->willReturn($form);
 
         return $builder;

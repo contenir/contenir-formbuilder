@@ -23,7 +23,7 @@ use function sprintf;
  *
  * @api
  */
-class FieldTypeRegistry
+final class FieldTypeRegistry
 {
     /** @var array<string, FieldTypeInterface> */
     private array $types = [];

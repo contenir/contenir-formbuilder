@@ -27,7 +27,7 @@ use function array_values;
  *
  * @extends Form<array<string, mixed>>
  */
-class BuilderForm extends Form implements SplSubject
+final class BuilderForm extends Form implements SplSubject
 {
     /** @var ArrayObject<string, mixed>|null */
     public ?ArrayObject $registry = null;

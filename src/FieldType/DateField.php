@@ -14,7 +14,7 @@ use function is_string;
 /**
  * @api
  */
-class DateField extends AbstractFieldType
+final class DateField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

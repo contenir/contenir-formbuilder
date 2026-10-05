@@ -13,6 +13,9 @@ constants, and several behaviour fixes. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
 ### Changed
 
 - Requires PHP 8.3, 8.4 or 8.5. PHP 8.1 and 8.2 are no longer supported.
+- Every concrete class is `final`. Customise through `FieldTypeInterface` /
+  `AbstractFieldType`, the new `FormBuilderInterface`, and the existing
+  registration and setter hooks.
 - `laminas/laminas-session` is now a dependency. The CSRF element every built
   form carries cannot generate or check its token without it.
 - Conflicts with `laminas/laminas-stdlib` below 3.21, which raises
@@ -34,8 +37,11 @@ constants, and several behaviour fixes. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
 
 ### Added
 
-- `FormSubmissionService::isUploadedFile()`, a protected hook around
-  `is_uploaded_file()`.
+- `Service\FormBuilderInterface`, implemented by `FormBuilderService`;
+  `FormSubmissionService` depends on the interface.
+- `FormSubmissionService` takes an optional third argument, a
+  `Closure(string): bool` that decides whether a path is an HTTP upload
+  (default `is_uploaded_file()`).
 - Continuous integration on PHP 8.3, 8.4 and 8.5 against lowest, locked and
   latest dependencies, with coverage reported to Codecov.
 - Separate unit and integration test suites with 100% line and branch

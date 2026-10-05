@@ -15,7 +15,7 @@ use function is_scalar;
 /**
  * @api
  */
-class RadioField extends AbstractFieldType
+final class RadioField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

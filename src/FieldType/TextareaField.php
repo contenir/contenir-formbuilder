@@ -14,7 +14,7 @@ use function is_numeric;
 /**
  * @api
  */
-class TextareaField extends AbstractFieldType
+final class TextareaField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

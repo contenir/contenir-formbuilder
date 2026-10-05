@@ -12,7 +12,7 @@ use Override;
 /**
  * @api
  */
-class HiddenField extends AbstractFieldType
+final class HiddenField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

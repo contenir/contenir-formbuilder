@@ -14,7 +14,7 @@ use function is_numeric;
 /**
  * @api
  */
-class NumberField extends AbstractFieldType
+final class NumberField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

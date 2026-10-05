@@ -12,7 +12,7 @@ use Override;
 /**
  * @api
  */
-class TimeField extends AbstractFieldType
+final class TimeField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

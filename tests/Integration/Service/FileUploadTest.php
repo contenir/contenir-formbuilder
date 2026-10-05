@@ -9,7 +9,6 @@ use Contenir\FormBuilder\FieldType\FieldTypeRegistry;
 use Contenir\FormBuilder\Service\FormBuilderService;
 use Contenir\FormBuilder\Service\FormSubmissionService;
 use Contenir\FormBuilder\Tests\TestAsset\Factory\FormDefinitionFactory as F;
-use Contenir\FormBuilder\Tests\TestAsset\Service\AcceptingUploadsSubmissionService;
 use Contenir\FormBuilder\Tests\Trait\InMemorySessionTrait;
 use Contenir\FormBuilder\Tests\Trait\TemporaryDirectoryTrait;
 use Contenir\FormBuilder\Validator\ValidatorFactory;
@@ -22,6 +21,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 use function file_put_contents;
+use function is_file;
 
 use const UPLOAD_ERR_NO_FILE;
 use const UPLOAD_ERR_OK;
@@ -59,7 +59,7 @@ final class FileUploadTest extends TestCase
     public function missingClientNameAndTypeFallBackToDefaults(): void
     {
         $form    = $this->uploadForm();
-        $service = new AcceptingUploadsSubmissionService($this->builder, $this->manager);
+        $service = $this->acceptingService($this->manager);
 
         $result = $service->submit($form, $this->post($form), ['cv' => $this->file(['name' => null, 'type' => ''])]);
 
@@ -70,7 +70,7 @@ final class FileUploadTest extends TestCase
     public function nonArrayUploadIsSkipped(): void
     {
         $form    = $this->uploadForm();
-        $service = new AcceptingUploadsSubmissionService($this->builder, $this->manager);
+        $service = $this->acceptingService($this->manager);
 
         $service->submit($form, $this->post($form), ['cv' => 'cv.pdf']);
 
@@ -92,7 +92,7 @@ final class FileUploadTest extends TestCase
     public function storesTheUploadUnderTheFormSlugAndSubmitsItsPath(): void
     {
         $form    = $this->uploadForm();
-        $service = new AcceptingUploadsSubmissionService($this->builder, $this->manager);
+        $service = $this->acceptingService($this->manager);
 
         $result = $service->submit($form, $this->post($form), ['cv' => $this->file()]);
 
@@ -108,7 +108,7 @@ final class FileUploadTest extends TestCase
     public function unusableUploadsAreSkipped(array $override): void
     {
         $form    = $this->uploadForm();
-        $service = new AcceptingUploadsSubmissionService($this->builder, $this->manager);
+        $service = $this->acceptingService($this->manager);
 
         $result = $service->submit($form, $this->post($form), ['cv' => $this->file($override)]);
 
@@ -122,7 +122,7 @@ final class FileUploadTest extends TestCase
         $form    = $this->uploadForm();
         $manager = new StorageManager();
         $manager->register('cdn', $this->storage);
-        $service = new AcceptingUploadsSubmissionService($this->builder, $manager);
+        $service = $this->acceptingService($manager);
 
         $service->submit($form, $this->post($form), ['cv' => $this->file()]);
 
@@ -133,7 +133,7 @@ final class FileUploadTest extends TestCase
     public function uploadsAreSkippedWithoutAStorageManager(): void
     {
         $form    = $this->uploadForm();
-        $service = new AcceptingUploadsSubmissionService($this->builder);
+        $service = $this->acceptingService(null);
 
         $service->submit($form, $this->post($form), ['cv' => $this->file()]);
 
@@ -144,7 +144,7 @@ final class FileUploadTest extends TestCase
     public function uploadsForNonFileFieldsAreIgnored(): void
     {
         $form    = F::form([F::field('text', 'cv')]);
-        $service = new AcceptingUploadsSubmissionService($this->builder, $this->manager);
+        $service = $this->acceptingService($this->manager);
 
         $result = $service->submit($form, $this->post($form, ['cv' => 'typed']), ['cv' => $this->file()]);
 
@@ -200,6 +200,15 @@ final class FileUploadTest extends TestCase
         $csrf = $this->builder->build($form)->get(FormBuilderService::CSRF_NAME)->getValue();
 
         return [...$values, FormBuilderService::CSRF_NAME => $csrf];
+    }
+
+    /**
+     * Treats any existing file as an HTTP upload, so the upload path runs
+     * outside a real request.
+     */
+    private function acceptingService(?StorageManager $manager): FormSubmissionService
+    {
+        return new FormSubmissionService($this->builder, $manager, is_file(...));
     }
 
     private function uploadForm(): FormDefinition

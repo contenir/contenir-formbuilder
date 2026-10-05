@@ -36,7 +36,7 @@ use const PHP_INT_MAX;
  *
  * @api
  */
-class ValidatorFactory
+final class ValidatorFactory
 {
     public const string TYPE_REQUIRED      = 'required';
     public const string TYPE_STRING_LENGTH = 'string_length';

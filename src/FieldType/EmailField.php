@@ -12,7 +12,7 @@ use Override;
 /**
  * @api
  */
-class EmailField extends AbstractFieldType
+final class EmailField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

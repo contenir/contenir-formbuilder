@@ -18,6 +18,7 @@ use Laminas\InputFilter\Input;
 use Laminas\InputFilter\InputFilter;
 use Laminas\Validator\Identical;
 use OutOfBoundsException;
+use Override;
 
 use function is_string;
 
@@ -38,7 +39,7 @@ use function is_string;
  * @api
  *
  */
-class FormBuilderService
+final class FormBuilderService implements FormBuilderInterface
 {
     public const string CSRF_NAME     = '_csrf';
     public const string HONEYPOT_NAME = 'hid';
@@ -55,6 +56,7 @@ class FormBuilderService
      *
      * @throws FormException When Laminas rejects an element.
      */
+    #[Override]
     public function build(FormDefinition $form): FormInterface
     {
         $builder = new BuilderForm();

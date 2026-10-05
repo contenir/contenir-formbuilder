@@ -48,7 +48,9 @@ public function buildElement(FieldDefinition $field): ElementInterface;
 
 ## AbstractFieldType
 
-Extend it to write a type. Implement `key()`, `label()` and
+The built-in types are `final`. Extend `AbstractFieldType` (or implement
+`FieldTypeInterface`) to write a type, and register it under a new key or the
+key of the built-in it replaces. Implement `key()`, `label()` and
 `createElement(FieldDefinition $field): ElementInterface`. Override as needed:
 
 - `applyHtml5Hints(ElementInterface $element, FieldDefinition $field): void`

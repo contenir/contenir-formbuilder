@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Contenir\FormBuilder\Service;
 
 use ArrayObject;
+use Closure;
 use Contenir\FormBuilder\Conditional\RuleEvaluator;
 use Contenir\FormBuilder\Definition\FormDefinition;
 use Contenir\Storage\Exception\StorageException;
@@ -46,18 +47,27 @@ use const UPLOAD_ERR_OK;
  * @mago-expect lint:kan-defect Kept whole for 2.0 (owns the whole submit pipeline); splitting it is a proposed follow-up.
  * @mago-expect lint:too-many-methods Kept whole for 2.0 (owns the whole submit pipeline); splitting it is a proposed follow-up.
  */
-class FormSubmissionService
+final class FormSubmissionService
 {
     /** @var list<SplObserver> */
     private array $observers = [];
 
     private RuleEvaluator $conditionalEvaluator;
 
+    /** @var Closure(string): bool */
+    private Closure $isUploadedFile;
+
+    /**
+     * @param (Closure(string): bool)|null $isUploadedFile Decides whether a temporary path is an HTTP
+     *                                                    upload; defaults to is_uploaded_file().
+     */
     public function __construct(
-        private FormBuilderService $builder,
+        private FormBuilderInterface $builder,
         private ?StorageManager $storageManager = null,
+        ?Closure $isUploadedFile = null,
     ) {
         $this->conditionalEvaluator = new RuleEvaluator();
+        $this->isUploadedFile       = $isUploadedFile ?? is_uploaded_file(...);
     }
 
     public function attach(SplObserver $observer): void
@@ -131,16 +141,6 @@ class FormSubmissionService
             isSpam: $isSpam,
             entryId: $this->extractEntryId($built),
         );
-    }
-
-    /**
-     * Whether `$path` is a file PHP received through an HTTP upload. Only
-     * such files are handed to storage; overridable so the upload path can
-     * be exercised without a real request.
-     */
-    protected function isUploadedFile(string $path): bool
-    {
-        return is_uploaded_file($path);
     }
 
     /**
@@ -285,7 +285,7 @@ class FormSubmissionService
                 UPLOAD_ERR_OK !== $error
                 || ! is_string($tmpPath)
                 || '' === $tmpPath
-                || ! $this->isUploadedFile($tmpPath)
+                || ! ($this->isUploadedFile)($tmpPath)
             ) {
                 continue;
             }

@@ -16,7 +16,7 @@ use function is_string;
 /**
  * @api
  */
-class TelField extends AbstractFieldType
+final class TelField extends AbstractFieldType
 {
     #[Override]
     public function icon(): string

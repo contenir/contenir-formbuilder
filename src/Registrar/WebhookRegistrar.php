@@ -68,7 +68,7 @@ use const JSON_UNESCAPED_UNICODE;
  *
  * @mago-expect lint:cyclomatic-complexity Kept whole for 2.0 (payload building and cURL dispatch in one observer); splitting it is a proposed follow-up.
  */
-class WebhookRegistrar implements SplObserver
+final class WebhookRegistrar implements SplObserver
 {
     public function __construct(
         private ?LoggerInterface $log = null,
