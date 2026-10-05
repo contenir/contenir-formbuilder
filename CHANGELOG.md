@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Infection mutation testing in CI, MSI 100%.
+
+### Changed
+
+- `FormBuilderService` no longer declares its own input for the CSRF element.
+  The input it added was dead code: `Csrf` is an input provider, and Laminas
+  Form already adds the element's required, token-checked input to the
+  filter. Submissions without the issued token are still rejected.
+- `FormContentSanitizer` drops code that never changed its output:
+  `preserveWhiteSpace` (ignored by libxml's HTML parser), the closing wrapper
+  tag (the parser closes it), `strtolower()` on tag and attribute names (the
+  parser lower-cases them), the reverse visiting order and an `explode()`
+  limit. The allow-list and its output are unchanged.
+
 ## [2.1.1] - Unreleased
 
 ### Fixed

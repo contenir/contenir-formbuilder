@@ -7,7 +7,6 @@ namespace Contenir\FormBuilder\Html;
 use DOMDocument;
 use DOMElement;
 
-use function array_reverse;
 use function explode;
 use function in_array;
 use function iterator_to_array;
@@ -89,18 +88,20 @@ final class FormContentSanitizer
     private const string ROOT_CLOSE = '</div>';
 
     /**
-     * Elements are visited in reverse document order, so every descendant is
-     * cleaned before the ancestor that may unwrap or remove it.
+     * Every element is cleaned exactly once, from a snapshot taken before any
+     * change: unwrapping or removing an ancestor only moves or detaches its
+     * descendants, which are still visited. libxml's HTML parser lower-cases
+     * tag and attribute names and closes any element left open, including the
+     * wrapper, which is why the input never closes it.
      */
     public static function sanitize(string $html): string
     {
-        $doc                     = new DOMDocument('1.0', 'UTF-8');
-        $doc->formatOutput       = false;
-        $doc->preserveWhiteSpace = true;
+        $doc               = new DOMDocument('1.0', 'UTF-8');
+        $doc->formatOutput = false;
 
         $previousState = libxml_use_internal_errors(use_errors: true);
         $doc->loadHTML(
-            '<?xml encoding="UTF-8">' . self::ROOT_OPEN . $html . self::ROOT_CLOSE,
+            '<?xml encoding="UTF-8">' . self::ROOT_OPEN . $html,
             LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD,
         );
         libxml_clear_errors();
@@ -113,7 +114,7 @@ final class FormContentSanitizer
         }
 
         $elements = iterator_to_array($root->getElementsByTagName('*'));
-        foreach (array_reverse($elements) as $element) {
+        foreach ($elements as $element) {
             self::sanitizeElement($element);
         }
 
@@ -138,44 +139,43 @@ final class FormContentSanitizer
             return true;
         }
 
-        $scheme = strtolower(explode(':', $value, limit: 2)[0]);
+        $scheme = strtolower(explode(':', $value)[0]);
 
         return in_array($scheme, self::SAFE_HREF_SCHEMES, strict: true);
     }
 
     private static function sanitizeElement(DOMElement $element): void
     {
-        $tag = strtolower($element->tagName);
+        $tag = $element->tagName;
+        if (in_array($tag, self::ALLOWED_TAGS, strict: true)) {
+            self::stripDisallowedAttributes($element, $tag);
+            return;
+        }
+
         if (in_array($tag, self::REMOVED_TAGS, strict: true)) {
             $element->parentNode?->removeChild($element);
             return;
         }
 
-        if (! in_array($tag, self::ALLOWED_TAGS, strict: true)) {
-            self::unwrap($element);
-            return;
-        }
-
-        self::stripDisallowedAttributes($element, $tag);
+        self::unwrap($element);
     }
 
     private static function stripDisallowedAttributes(DOMElement $element, string $tag): void
     {
-        $allowed = [
-            ...self::ALLOWED_ATTRS_ANY,
-            ...(self::ALLOWED_ATTRS_BY_TAG[$tag] ?? []),
-        ];
+        $allowedForTag = self::ALLOWED_ATTRS_BY_TAG[$tag] ?? [];
 
         /** @var list<string> $names */
         $names = $element->getAttributeNames();
         foreach ($names as $name) {
-            $lower = strtolower($name);
-            if (! in_array($lower, $allowed, strict: true)) {
+            if (
+                ! in_array($name, self::ALLOWED_ATTRS_ANY, strict: true)
+                && ! in_array($name, $allowedForTag, strict: true)
+            ) {
                 $element->removeAttribute($name);
                 continue;
             }
 
-            if ('href' === $lower && ! self::isSafeHref($element->getAttribute($name))) {
+            if ('href' === $name && ! self::isSafeHref($element->getAttribute($name))) {
                 $element->removeAttribute($name);
             }
         }

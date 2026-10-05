@@ -10,6 +10,10 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
+use function libxml_clear_errors;
+use function libxml_get_errors;
+use function libxml_use_internal_errors;
+
 #[Group('unit')]
 final class FormContentSanitizerTest extends TestCase
 {
@@ -48,6 +52,11 @@ final class FormContentSanitizerTest extends TestCase
                 '<a href="mailto:a@b.c">m</a><a href="tel:+61">t</a>',
                 '<a href="mailto:a@b.c">m</a><a href="tel:+61">t</a>',
             ],
+            'upper-case safe scheme kept'      => [
+                '<a href="HTTPS://example.com">x</a>',
+                '<a href="HTTPS://example.com">x</a>',
+            ],
+            'relative href with a colon kept'  => ['<a href="/search?q=a:b">x</a>', '<a href="/search?q=a:b">x</a>'],
             'javascript href removed'          => ['<a href="javascript:alert(1)">x</a>', '<a>x</a>'],
             'upper-case scheme removed'        => ['<a href="JaVaScRiPt:alert(1)">x</a>', '<a>x</a>'],
             'tab inside scheme removed'        => ['<a href="java&#9;script:alert(1)">x</a>', '<a>x</a>'],
@@ -56,7 +65,44 @@ final class FormContentSanitizerTest extends TestCase
             'empty href removed'               => ['<a href=" ">x</a>', '<a>x</a>'],
             'utf-8 preserved'                  => ['<p>Café — ✓</p>', '<p>Café — ✓</p>'],
             'stray closing wrapper ignored'    => ['a</div><script>x</script>b', 'a'],
+            'upper-case script removed'        => ['<SCRIPT>alert(1)</SCRIPT>ok', 'ok'],
+            'mixed-case script removed'        => ['<p>a<ScRiPt>alert(1)</sCrIpT>b</p>', '<p>ab</p>'],
+            'img with onerror unwrapped'       => ['<img src=x onerror=alert(1)>ok', 'ok'],
+            'upper-case handlers dropped'      => [
+                '<P CLASS="lead" ONCLICK="x()" STYLE="color:red">x</P>',
+                '<p class="lead">x</p>',
+            ],
+            'upper-case javascript href'       => [
+                '<A HREF="JaVaScRiPt:alert(1)" TITLE="t">x</A>',
+                '<a title="t">x</a>',
+            ],
+            'upper-case safe href kept'        => [
+                '<A HREF="https://x.test/">x</A>',
+                '<a href="https://x.test/">x</a>',
+            ],
+            'nested removed tags'              => ['<script><script>x</script></script>y', 'y'],
+            'script inside unwrapped tags'     => ['<div><font><script>x</script>a</font></div>b', 'ab'],
+            'unclosed tags closed'             => ['<p><b>x', '<p><b>x</b></p>'],
+            'misnested tags repaired'          => ['<b><i>x</b></i>', '<b><i>x</i></b>'],
+            'unclosed textarea unwrapped'      => ['<textarea>a<script>x</script>', 'a'],
+            'svg payload removed'              => ['<svg onload=alert(1)><script>x</script></svg>ok', 'ok'],
+            'stray body and html close tags'   => ['</body></html><p>x</p>', '<p>x</p>'],
+            'body wrapper unwrapped'           => ['<body onload=x()>y</body>', 'y'],
         ];
+    }
+
+    #[Test]
+    public function clearsTheParserErrorsItCaused(): void
+    {
+        $previous = libxml_use_internal_errors(use_errors: true);
+        libxml_clear_errors();
+
+        try {
+            FormContentSanitizer::sanitize('<p>broken <b>markup</p></i>');
+            static::assertSame([], libxml_get_errors());
+        } finally {
+            libxml_use_internal_errors($previous);
+        }
     }
 
     #[Test]
@@ -64,5 +110,18 @@ final class FormContentSanitizerTest extends TestCase
     public function keepsOnlyTheAllowList(string $html, string $expected): void
     {
         static::assertSame($expected, FormContentSanitizer::sanitize($html));
+    }
+
+    #[Test]
+    public function restoresTheCallersLibxmlErrorHandling(): void
+    {
+        $previous = libxml_use_internal_errors(use_errors: false);
+
+        try {
+            FormContentSanitizer::sanitize('<p>broken <b>markup</p></i>');
+            static::assertFalse(libxml_use_internal_errors());
+        } finally {
+            libxml_use_internal_errors($previous);
+        }
     }
 }

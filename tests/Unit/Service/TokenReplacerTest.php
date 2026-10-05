@@ -240,6 +240,29 @@ final class TokenReplacerTest extends TestCase
     }
 
     #[Test]
+    public function entryFieldsKeepsFieldsListedAfterASkippedOne(): void
+    {
+        $form = $this->formWithFields([
+            new FieldDefinition(
+                id: 1,
+                type: 'hidden',
+                name: 'utm_source',
+                label: 'UTM source',
+            ),
+            new FieldDefinition(
+                id: 2,
+                type: 'text',
+                name: 'name',
+                label: 'Name',
+            ),
+        ]);
+
+        $result = (new TokenReplacer())->replace('{entry:fields}', $form, ['name' => 'Alice']);
+
+        static::assertStringContainsString('Alice', $result);
+    }
+
+    #[Test]
     public function entryFieldsRendersEmptyValuesAsEmDash(): void
     {
         $replacer = new TokenReplacer();
@@ -346,6 +369,29 @@ final class TokenReplacerTest extends TestCase
         static::assertStringContainsString('Name', $result);
         static::assertStringNotContainsString('UTM source', $result);
         static::assertStringNotContainsString('newsletter', $result);
+    }
+
+    #[Test]
+    public function entryFieldsWrapsEveryRowInOneTable(): void
+    {
+        $form = $this->formWithFields([
+            new FieldDefinition(
+                id: 1,
+                type: 'text',
+                name: 'first',
+                label: 'First',
+            ),
+            new FieldDefinition(
+                id: 2,
+                type: 'text',
+                name: 'second',
+                label: 'Second',
+            ),
+        ]);
+
+        $result = (new TokenReplacer())->replace('{entry:fields}', $form, ['first' => 'A', 'second' => 'B']);
+
+        static::assertMatchesRegularExpression('#^<table [^>]+>(<tr>.*</tr>){2}</table>$#s', $result);
     }
 
     #[Test]
@@ -598,6 +644,19 @@ final class TokenReplacerTest extends TestCase
         $result = (new TokenReplacer())->replace('Entry {entry:id}', $this->formWithFields([]), [], ['id' => $id]);
 
         static::assertSame($expected, $result);
+    }
+
+    #[Test]
+    public function resolvesTheFormDescription(): void
+    {
+        $form = new FormDefinition(
+            id: 1,
+            slug: 'contact',
+            title: 'Contact',
+            description: 'Say hello',
+        );
+
+        static::assertSame('Say hello', (new TokenReplacer())->replace('{form:description}', $form, []));
     }
 
     #[Test]

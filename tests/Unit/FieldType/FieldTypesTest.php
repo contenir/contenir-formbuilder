@@ -76,6 +76,7 @@ final class FieldTypesTest extends TestCase
             'multiselect splits defaults' => ['multiselect', ' a, b,,c ', ['a', 'b', 'c']],
             'multiselect without default' => ['multiselect', '', null],
             'multicheckbox list'          => ['multicheckbox', 'a,b', ['a', 'b']],
+            'multicheckbox skips blanks'  => ['multicheckbox', 'a, ,b', ['a', 'b']],
             'multicheckbox only commas'   => ['multicheckbox', ' , ', null],
             'multicheckbox no default'    => ['multicheckbox', null, null],
         ];
@@ -118,30 +119,51 @@ final class FieldTypesTest extends TestCase
         $length = [new ValidatorDefinition('string_length', ['max' => 9])];
 
         return [
-            'email input hints'             => ['email', [], ['autocomplete' => 'email', 'inputmode' => 'email']],
-            'url input mode'                => ['url', [], ['inputmode' => 'url']],
-            'number range and step'         => [
+            'email input hints'                         => [
+                'email',
+                [],
+                ['autocomplete' => 'email', 'inputmode' => 'email'],
+            ],
+            'url input mode'                            => ['url', [], ['inputmode' => 'url']],
+            'number range and step'                     => [
                 'number',
                 ['options' => ['min' => 1, 'max' => '10', 'step' => 'x']],
                 ['min' => '1', 'max' => '10', 'inputmode' => 'numeric'],
             ],
-            'date range'                    => [
+            'date range'                                => [
                 'date',
                 ['options' => ['min' => '2026-01-01', 'max' => '']],
                 ['min' => '2026-01-01'],
             ],
-            'file accept'                   => ['file', ['options' => ['accept' => '.pdf']], ['accept' => '.pdf']],
-            'file without accept'           => ['file', ['options' => ['accept' => '']], []],
-            'textarea rows'                 => ['textarea', ['options' => ['rows' => '8']], ['rows' => '8']],
-            'textarea default rows'         => ['textarea', [], ['rows' => '5']],
-            'textarea non-numeric rows'     => ['textarea', ['options' => ['rows' => 'tall']], ['rows' => '5']],
-            'text pattern option'           => [
+            'file accept'                               => [
+                'file',
+                ['options' => ['accept' => '.pdf']],
+                ['accept' => '.pdf'],
+            ],
+            'file without accept'                       => ['file', ['options' => ['accept' => '']], []],
+            'textarea rows'                             => [
+                'textarea',
+                ['options' => ['rows' => '8']],
+                ['rows' => '8'],
+            ],
+            'textarea default rows'                     => ['textarea', [], ['rows' => '5']],
+            'textarea non-numeric rows'                 => [
+                'textarea',
+                ['options' => ['rows' => 'tall']],
+                ['rows' => '5'],
+            ],
+            'textarea fractional rows'                  => [
+                'textarea',
+                ['options' => ['rows' => '8.5']],
+                ['rows' => '8'],
+            ],
+            'text pattern option'                       => [
                 'text',
                 ['options' => ['pattern' => '[a-z]+'], 'validators' => $regex],
                 ['pattern' => '[a-z]+'],
             ],
-            'text pattern from validator'   => ['text', ['validators' => $regex], ['pattern' => '[0-9]+']],
-            'text ignores other validators' => [
+            'text pattern from validator'               => ['text', ['validators' => $regex], ['pattern' => '[0-9]+']],
+            'text ignores other validators'             => [
                 'text',
                 ['validators' => [
                     new ValidatorDefinition('regex', ['pattern' => ['x']]),
@@ -149,45 +171,69 @@ final class FieldTypesTest extends TestCase
                 ]],
                 [],
             ],
-            'text maxlength option'         => [
+            'text maxlength option'                     => [
                 'text',
                 ['options' => ['max_length' => 12], 'validators' => $length],
                 ['maxlength' => '12'],
             ],
-            'text maxlength from validator' => ['text', ['validators' => $length], ['maxlength' => '9']],
-            'text non-numeric maxlength'    => [
+            'text maxlength from validator'             => ['text', ['validators' => $length], ['maxlength' => '9']],
+            'text non-numeric maxlength'                => [
                 'text',
                 ['options' => ['max_length' => 'wide']],
                 ['maxlength' => 'wide'],
             ],
-            'text empty maxlength'          => ['text', ['options' => ['max_length' => '']], []],
-            'tel input mode'                => ['tel', [], ['inputmode' => 'tel']],
-            'tel pattern option'            => [
+            'text empty maxlength'                      => ['text', ['options' => ['max_length' => '']], []],
+            'text non-numeric maxlength with validator' => [
+                'text',
+                ['options' => ['max_length' => 'wide'], 'validators' => $length],
+                ['maxlength' => '9'],
+            ],
+            'tel input mode'                            => ['tel', [], ['inputmode' => 'tel']],
+            'tel pattern option'                        => [
                 'tel',
                 ['options' => ['pattern' => '\+?[0-9 ]+'], 'validators' => $regex],
                 ['inputmode' => 'tel', 'pattern' => '\+?[0-9 ]+'],
             ],
-            'tel pattern from validator'    => [
+            'tel pattern from validator'                => [
                 'tel',
                 ['validators' => [new ValidatorDefinition('email'), ...$regex]],
                 ['inputmode' => 'tel', 'pattern' => '[0-9]+'],
             ],
-            'tel without usable pattern'    => [
+            'tel first regex validator wins'            => [
+                'tel',
+                ['validators' => [...$regex, new ValidatorDefinition('regex', ['pattern' => '[a-z]+'])]],
+                ['inputmode' => 'tel', 'pattern' => '[0-9]+'],
+            ],
+            'tel numeric regex pattern'                 => [
+                'tel',
+                ['validators' => [new ValidatorDefinition('regex', ['pattern' => 123])]],
+                ['inputmode' => 'tel', 'pattern' => '123'],
+            ],
+            'tel ignores non-regex patterns'            => [
+                'tel',
+                ['validators' => [new ValidatorDefinition('string_length', ['pattern' => '[a-z]+'])]],
+                ['inputmode' => 'tel'],
+            ],
+            'tel without usable pattern'                => [
                 'tel',
                 ['validators' => [new ValidatorDefinition('regex')]],
                 ['inputmode' => 'tel'],
             ],
-            'tel maxlength int'             => [
+            'tel maxlength int'                         => [
                 'tel',
                 ['options' => ['max_length' => 15]],
                 ['inputmode' => 'tel', 'maxlength' => '15'],
             ],
-            'tel maxlength string'          => [
+            'tel maxlength string'                      => [
                 'tel',
                 ['options' => ['max_length' => '15']],
                 ['inputmode' => 'tel', 'maxlength' => '15'],
             ],
-            'tel empty maxlength'           => ['tel', ['options' => ['max_length' => '']], ['inputmode' => 'tel']],
+            'tel empty maxlength'                       => [
+                'tel',
+                ['options' => ['max_length' => '']],
+                ['inputmode' => 'tel'],
+            ],
         ];
     }
 
@@ -429,11 +475,12 @@ final class FieldTypesTest extends TestCase
                 ['label' => 'No value'],
                 ['value' => ['x'], 'label' => 'Array value'],
                 'not-a-choice',
+                ['value' => 'z', 'label' => 'Zed'],
             ],
         ]);
 
         static::assertTrue($element instanceof Element\Select || $element instanceof Element\MultiCheckbox);
-        static::assertSame(['a' => 'Apple', 2 => '2', 'c' => 'c'], $element->getValueOptions());
+        static::assertSame(['a' => 'Apple', 2 => '2', 'c' => 'c', 'z' => 'Zed'], $element->getValueOptions());
     }
 
     #[Test]

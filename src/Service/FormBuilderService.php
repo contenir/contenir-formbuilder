@@ -81,9 +81,7 @@ final class FormBuilderService implements FormBuilderInterface
             $inputFilter->add($this->buildInput($field));
         }
 
-        $csrfElement = $this->buildCsrfElement();
-        $builder->add($csrfElement);
-        $inputFilter->add($this->buildCsrfInput($csrfElement));
+        $builder->add($this->buildCsrfElement());
 
         $builder->add($this->buildHoneypotElement());
         $inputFilter->add($this->buildHoneypotInput());
@@ -114,6 +112,11 @@ final class FormBuilderService implements FormBuilderInterface
         return $identical;
     }
 
+    /**
+     * Csrf is an input provider: when the form attaches its input filter
+     * defaults, it adds the element's own required, token-checked input, so
+     * the builder does not declare one.
+     */
     private function buildCsrfElement(): Csrf
     {
         return new Csrf(self::CSRF_NAME, [
@@ -121,14 +124,6 @@ final class FormBuilderService implements FormBuilderInterface
                 'salt' => 'contenir_formbuilder',
             ],
         ]);
-    }
-
-    private function buildCsrfInput(Csrf $element): Input
-    {
-        $input = new Input(self::CSRF_NAME);
-        $input->setRequired(true);
-        $input->getValidatorChain()->attach($element->getCsrfValidator());
-        return $input;
     }
 
     private function buildHoneypotElement(): Text

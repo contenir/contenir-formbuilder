@@ -1,0 +1,90 @@
+{
+    "$schema": "vendor/infection/infection/resources/schema.json",
+    "source": { "directories": ["src"] },
+    "timeout": 10,
+    "threads": "max",
+    "logs": {
+        "text": "infection.log",
+        "summary": "summary.log",
+        "stryker": { "badge": "/^(main|master)$/" }
+    },
+    "mutators": {
+        "@default": true,
+
+        // Laminas StringLength casts min and max to int itself, clamps min at 0 and
+        // defaults min to 0, so the explicit cast, the -1 default and dropping the
+        // min key all build the same validator.
+        "ArrayItemRemoval": {
+            "ignoreSourceCodeByRegex": ["'min' => is_numeric\\(\\$min\\) \\? \\(int\\) \\$min : 0,"]
+        },
+        "CastInt": {
+            "ignoreSourceCodeByRegex": ["'(min|max)' => is_numeric\\(\\$(min|max)\\) \\? \\(int\\) \\$(min|max) : (0|null),"]
+        },
+        "DecrementInteger": {
+            "ignoreSourceCodeByRegex": ["'min' => is_numeric\\(\\$min\\) \\? \\(int\\) \\$min : 0,"]
+        },
+
+        "MatchArmRemoval": {
+            // Without the arm, `required` reaches ValidatorFactory::create(), which also returns null.
+            "ignoreSourceCodeByRegex": ["ValidatorFactory::TYPE_REQUIRED\\s+=> null,"]
+        },
+
+        "ReturnRemoval": {
+            "ignore": [
+                // Early exits for shapes the following code already handles the same way:
+                // a null/empty rule or show_when falls through to "no conditions" (show),
+                // a failed `any` reaches the `all` loop which fails on the same conditions,
+                // null/non-scalar values fall through to "empty", and a list that contains
+                // no needle falls through to str_contains('', $needle) === false.
+                "Contenir\\FormBuilder\\Conditional\\RuleEvaluator::shouldShow::74",
+                "Contenir\\FormBuilder\\Conditional\\RuleEvaluator::shouldShow::79",
+                "Contenir\\FormBuilder\\Conditional\\RuleEvaluator::shouldShow::94",
+                "Contenir\\FormBuilder\\Conditional\\RuleEvaluator::isEmpty::135",
+                "Contenir\\FormBuilder\\Conditional\\RuleEvaluator::stringContains::166",
+                // A non-array post or row yields no conditions (null) further down anyway.
+                "Contenir\\FormBuilder\\Conditional\\ConditionalRulesParser::parse::61",
+                "Contenir\\FormBuilder\\Conditional\\ConditionalRulesParser::normaliseRow::87",
+                // preg_replace_callback() on an empty template returns '' as well.
+                "Contenir\\FormBuilder\\Service\\TokenReplacer::dispatch::185"
+            ]
+        },
+        "LogicalOr": {
+            // A non-array or empty show_when yields no conditions further down and shows the field.
+            "ignoreSourceCodeByRegex": ["if \\(! is_array\\(\\$showWhen\\) \\|\\| \\[\\] === \\$showWhen\\) \\{"]
+        },
+
+        "CastString": {
+            "ignore": [
+                // A null name renders as '' through sprintf() and interpolation, and the
+                // radio `name` attribute is skipped by htmlAttribs() whether null or ''.
+                "Contenir\\FormBuilder\\Render\\FormMarkup::renderChoiceList::408"
+            ],
+            "ignoreSourceCodeByRegex": [
+                // A null element name becomes the '' key either way.
+                "\\$context\\[\\(string\\) \\$element->getName\\(\\)\\] = \\$element->getValue\\(\\);",
+                // htmlAttribs() casts every scalar and skips null, so these casts change nothing.
+                "\\$attribs\\['name'\\] = \\(string\\) \\$element->getName\\(\\);",
+                "\\? \\(string\\) \\$value",
+                ": \\(string\\) \\$element->getLabel\\(\\);",
+                // implode() casts each scalar to string the same way.
+                "\\$strings\\[\\] = \\(string\\) \\$value;",
+                // The value is interpolated into a string on the next line, which casts it the same way.
+                "\\$existingClass = \\(string\\) \\(\\$element->getAttribute\\('class'\\) \\?\\? ''\\);"
+            ]
+        },
+        "Assignment": {
+            "ignore": [
+                // $heading is still '' here, so assigning instead of appending is the same.
+                "Contenir\\FormBuilder\\Render\\FormMarkup::renderSection::589"
+            ]
+        },
+        "ArrayOneItem": {
+            "ignore": [
+                // These early returns hold a single item, so trimming the array to one item is a no-op.
+                "Contenir\\FormBuilder\\Render\\FormMarkup::columnAttributes::193",
+                "Contenir\\FormBuilder\\Render\\FormMarkup::columnAttributes::198"
+            ]
+        }
+    },
+    "staticAnalysisTool": "mago"
+}
