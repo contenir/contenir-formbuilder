@@ -16,24 +16,26 @@ namespace Contenir\FormBuilder\Definition;
  *  - `stepped` — wizard-style, one section at a time (v2 surface; schema-ready).
  *
  * @phpstan-type FormSettings array<string, mixed>
+ *
+ * @api
  */
 final class FormDefinition
 {
-    public const LAYOUT_SINGLE  = 'single';
-    public const LAYOUT_STEPPED = 'stepped';
+    public const string LAYOUT_SINGLE  = 'single';
+    public const string LAYOUT_STEPPED = 'stepped';
 
-    public const STATUS_ACTIVE   = 'active';
-    public const STATUS_INACTIVE = 'inactive';
+    public const string STATUS_ACTIVE   = 'active';
+    public const string STATUS_INACTIVE = 'inactive';
 
     /**
      * Post-submission action modes. Stored under `settings.success.mode`;
      * each value maps to a branch in `Forms_SubmitController`.
      */
-    public const SUCCESS_REDIRECT_REFERRER = 'redirect_referrer';
-    public const SUCCESS_REDIRECT_URL      = 'redirect_url';
-    public const SUCCESS_INLINE_MESSAGE    = 'inline_message';
+    public const string SUCCESS_REDIRECT_REFERRER = 'redirect_referrer';
+    public const string SUCCESS_REDIRECT_URL      = 'redirect_url';
+    public const string SUCCESS_INLINE_MESSAGE    = 'inline_message';
 
-    public const SUCCESS_MODES = [
+    public const array SUCCESS_MODES = [
         self::SUCCESS_REDIRECT_REFERRER,
         self::SUCCESS_REDIRECT_URL,
         self::SUCCESS_INLINE_MESSAGE,
@@ -44,6 +46,8 @@ final class FormDefinition
      * @param list<NotificationDefinition> $notifications
      * @param list<WebhookDefinition> $webhooks
      * @param FormSettings $settings
+     *
+     * @mago-expect lint:excessive-parameter-list Immutable value object; the promoted constructor is its public shape and is called with named arguments.
      */
     public function __construct(
         public readonly ?int $id,
@@ -59,8 +63,7 @@ final class FormDefinition
         public readonly array $sections = [],
         public readonly array $notifications = [],
         public readonly array $webhooks = [],
-    ) {
-    }
+    ) {}
 
     /** @return list<FieldDefinition> */
     public function getAllFields(): array

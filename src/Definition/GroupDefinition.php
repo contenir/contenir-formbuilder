@@ -9,6 +9,8 @@ namespace Contenir\FormBuilder\Definition;
  *
  * An empty {@see $legend} renders without a heading — useful when a section
  * already supplies enough context.
+ *
+ * @api
  */
 final class GroupDefinition
 {
@@ -19,6 +21,5 @@ final class GroupDefinition
         public readonly ?string $description = null,
         public readonly int $sort = 0,
         public readonly array $rows = [],
-    ) {
-    }
+    ) {}
 }

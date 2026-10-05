@@ -4,10 +4,28 @@ declare(strict_types=1);
 
 namespace Contenir\FormBuilder\Service;
 
+use ArrayObject;
 use Contenir\FormBuilder\Conditional\RuleEvaluator;
 use Contenir\FormBuilder\Definition\FormDefinition;
+use Contenir\Storage\Exception\StorageException;
 use Contenir\Storage\StorageManager;
+use Contenir\Storage\UploadInput;
+use DateTimeImmutable;
+use Laminas\Form\Exception\ExceptionInterface as FormException;
 use Laminas\Form\FormInterface;
+use SplObserver;
+
+use function array_diff;
+use function array_keys;
+use function array_values;
+use function is_array;
+use function is_int;
+use function is_string;
+use function is_uploaded_file;
+use function trim;
+
+use const UPLOAD_ERR_NO_FILE;
+use const UPLOAD_ERR_OK;
 
 /**
  * Coordinates server-side form submission: build, validate, dispatch.
@@ -21,10 +39,16 @@ use Laminas\Form\FormInterface;
  * null (or unconfigured for the default profile), file uploads are
  * silently skipped — this keeps the engine usable in tests and in
  * deployments that don't accept uploads.
+ *
+ * @api
+ *
+ * @mago-expect lint:cyclomatic-complexity Kept whole for 2.0 (owns the whole submit pipeline); splitting it is a proposed follow-up.
+ * @mago-expect lint:kan-defect Kept whole for 2.0 (owns the whole submit pipeline); splitting it is a proposed follow-up.
+ * @mago-expect lint:too-many-methods Kept whole for 2.0 (owns the whole submit pipeline); splitting it is a proposed follow-up.
  */
 class FormSubmissionService
 {
-    /** @var list<\SplObserver> */
+    /** @var list<SplObserver> */
     private array $observers = [];
 
     private RuleEvaluator $conditionalEvaluator;
@@ -36,16 +60,29 @@ class FormSubmissionService
         $this->conditionalEvaluator = new RuleEvaluator();
     }
 
-    public function attach(\SplObserver $observer): void
+    public function attach(SplObserver $observer): void
     {
         $this->observers[] = $observer;
     }
 
     /**
+     * Observers are notified only for a valid or spam-flagged submission, and
+     * only when the builder returns a {@see BuilderForm}. The submission
+     * timestamp is captured once, so `{entry:date}` reads the same for every
+     * observer. The registry's `entry` attributes are seeded before the first
+     * observer and refreshed after each one, so `{entry:id}` picks up the
+     * `entry_id` a storing registrar (which runs first by convention) writes.
+     *
      * @param array<string, mixed> $post
      * @param array<string, mixed> $files    Shape of `$_FILES` — keyed by field name,
      *                                       each value `{name, type, tmp_name, error, size}`.
      * @param array<string, mixed> $context  ip, user_id, meta
+     *
+     * @throws FormException When Laminas rejects the built form.
+     * @throws StorageException When a configured storage backend cannot store an upload.
+     *
+     * @mago-expect analysis:less-specific-argument Laminas returns nested messages and data keyed by element name.
+     * @mago-expect analysis:mixed-assignment Form data is untyped; it is checked with is_array().
      */
     public function submit(
         FormDefinition $form,
@@ -60,8 +97,7 @@ class FormSubmissionService
             unset($post[FormBuilderService::HONEYPOT_NAME]);
         }
 
-        $post = $this->processFileUploads($form, $post, $files);
-
+        $post         = $this->processFileUploads($form, $post, $files);
         $hiddenFields = $this->applyConditionalGating($built, $form, $post);
 
         $built->setData($post);
@@ -77,36 +113,14 @@ class FormSubmissionService
             );
         }
 
-        $values = $this->collectValues($built, $post, $valid);
+        $data   = $valid ? $built->getData(FormInterface::VALUES_NORMALIZED) : $post;
+        $values = $this->withoutInternalValues(is_array($data) ? $data : $post);
         foreach ($hiddenFields as $name) {
             unset($values[$name]);
         }
 
-        $registry = [
-            'form'    => $form,
-            'values'  => $values,
-            'spam'    => $isSpam,
-            'context' => $context,
-        ];
         if ($built instanceof BuilderForm) {
-            $built->registry = new \ArrayObject($registry, \ArrayObject::ARRAY_AS_PROPS);
-        }
-
-        // Capture the timestamp once so {entry:date} reads identically
-        // for every observer rather than drifting by milliseconds across
-        // observer updates.
-        $submittedAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-
-        // Seed entry attributes BEFORE observers fire so notification
-        // templates can resolve {entry:date}, {entry:ip}, {entry:status}.
-        // Refreshed after each observer so {entry:id} picks up whatever
-        // the StoreSubmissionRegistrar (which runs first by convention)
-        // writes to registry['entry_id'] when persisting the submission.
-        $this->updateEntryRegistry($built, $context, $submittedAt);
-
-        foreach ($this->observers as $observer) {
-            $observer->update($built);
-            $this->updateEntryRegistry($built, $context, $submittedAt);
+            $this->notifyObservers($built, $form, $values, $isSpam, $context);
         }
 
         return new SubmissionResult(
@@ -119,20 +133,121 @@ class FormSubmissionService
         );
     }
 
-    /** @param array<string, mixed> $context */
-    private function updateEntryRegistry(FormInterface $form, array $context, string $date): void
+    /**
+     * Whether `$path` is a file PHP received through an HTTP upload. Only
+     * such files are handed to storage; overridable so the upload path can
+     * be exercised without a real request.
+     */
+    protected function isUploadedFile(string $path): bool
     {
-        if (! ($form instanceof BuilderForm) || ! ($form->registry instanceof \ArrayObject)) {
-            return;
-        }
-        $form->registry['entry'] = $this->buildEntryAttributes($form, $context, $date);
+        return is_uploaded_file($path);
     }
 
-    /** @param array<string, mixed> $post */
+    /**
+     * Excludes every field whose conditional rule fails against the submitted
+     * data from the form's validation group. Returns the names of those hidden
+     * fields so the caller can drop their values from the submission payload:
+     * leftover state in $post for a hidden field must not be persisted.
+     *
+     * @param array<string, mixed> $post
+     *
+     * @return list<string>
+     */
+    private function applyConditionalGating(FormInterface $built, FormDefinition $form, array $post): array
+    {
+        $inputFilter = $built->getInputFilter();
+        $hidden      = [];
+
+        foreach ($form->getAllFields() as $field) {
+            if (null === $field->conditional || ! $inputFilter->has($field->name)) {
+                continue;
+            }
+
+            if (! $this->conditionalEvaluator->shouldShow($field->conditional, $post)) {
+                $hidden[] = $field->name;
+            }
+        }
+
+        if ([] !== $hidden) {
+            $allNames = array_keys($built->getElements());
+            $built->setValidationGroup(array_values(array_diff($allNames, $hidden)));
+        }
+
+        return $hidden;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     *
+     * @return array{id: int|null, date: string, ip: mixed, status: mixed}
+     */
+    private function buildEntryAttributes(BuilderForm $form, array $context, string $date): array
+    {
+        return [
+            'id'     => $this->extractEntryId($form),
+            'date'   => $date,
+            'ip'     => $context['ip'] ?? '',
+            'status' => $form->registry['entry_status'] ?? 'complete',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $post
+     *
+     * @mago-expect analysis:mixed-assignment POST values are untyped; the honeypot is checked with is_string().
+     */
     private function detectSpam(array $post): bool
     {
         $honeypot = $post[FormBuilderService::HONEYPOT_NAME] ?? '';
-        return is_string($honeypot) ? trim($honeypot) !== '' : true;
+
+        return ! is_string($honeypot) || trim($honeypot) !== '';
+    }
+
+    /**
+     * @mago-expect analysis:mixed-assignment The registry is an untyped bag; the id is checked with is_int().
+     */
+    private function extractEntryId(FormInterface $form): ?int
+    {
+        if (! $form instanceof BuilderForm || ! $form->registry instanceof ArrayObject) {
+            return null;
+        }
+
+        $entryId = $form->registry['entry_id'] ?? null;
+
+        return is_int($entryId) ? $entryId : null;
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     * @param array<string, mixed> $context
+     */
+    private function notifyObservers(
+        BuilderForm $built,
+        FormDefinition $form,
+        array $values,
+        bool $isSpam,
+        array $context,
+    ): void {
+        /** @var ArrayObject<string, mixed> $registry */
+        $registry = new ArrayObject(
+            [
+                'form'    => $form,
+                'values'  => $values,
+                'spam'    => $isSpam,
+                'context' => $context,
+            ],
+            ArrayObject::ARRAY_AS_PROPS,
+        );
+
+        $built->registry = $registry;
+
+        $submittedAt = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $this->updateEntryRegistry($built, $context, $submittedAt);
+        foreach ($this->observers as $observer) {
+            $observer->update($built);
+            $this->updateEntryRegistry($built, $context, $submittedAt);
+        }
     }
 
     /**
@@ -149,144 +264,81 @@ class FormSubmissionService
      *
      * @param array<string, mixed> $post
      * @param array<string, mixed> $files
+     *
      * @return array<string, mixed>
+     *
+     * @throws StorageException
+     *
+     * @mago-expect analysis:mixed-assignment `$_FILES` entries are untyped; each key is checked before use.
      */
     private function processFileUploads(FormDefinition $form, array $post, array $files): array
     {
-        if ($files === []) {
-            return $post;
-        }
         foreach ($form->getAllFields() as $field) {
-            if ($field->type !== 'file') {
-                continue;
-            }
             $upload = $files[$field->name] ?? null;
-            if (! is_array($upload)) {
-                continue;
-            }
-            $error = (int) ($upload['error'] ?? \UPLOAD_ERR_NO_FILE);
-            if ($error !== \UPLOAD_ERR_OK) {
-                continue;
-            }
-            $tmpPath = (string) ($upload['tmp_name'] ?? '');
-            if ($tmpPath === '' || ! is_uploaded_file($tmpPath)) {
+            if ('file' !== $field->type || ! is_array($upload)) {
                 continue;
             }
 
+            $error   = $upload['error'] ?? UPLOAD_ERR_NO_FILE;
+            $tmpPath = $upload['tmp_name'] ?? '';
+            if (
+                UPLOAD_ERR_OK !== $error
+                || ! is_string($tmpPath)
+                || '' === $tmpPath
+                || ! $this->isUploadedFile($tmpPath)
+            ) {
+                continue;
+            }
+
+            $name   = $upload['name'] ?? null;
+            $type   = $upload['type'] ?? null;
             $stored = $this->storeUpload(
                 $form,
                 $tmpPath,
-                (string) ($upload['name'] ?? 'upload'),
-                (string) ($upload['type'] ?? ''),
+                is_string($name) ? $name : 'upload',
+                is_string($type) && '' !== $type ? $type : null,
             );
-            if ($stored !== null) {
+            if (null !== $stored) {
                 $post[$field->name] = $stored;
             }
         }
+
         return $post;
     }
 
-    private function storeUpload(FormDefinition $form, string $tmpPath, string $clientName, string $mimeType): ?string
+    /**
+     * @throws StorageException
+     */
+    private function storeUpload(FormDefinition $form, string $tmpPath, string $clientName, ?string $mimeType): ?string
     {
-        if ($this->storageManager === null) {
+        if (null === $this->storageManager || ! $this->storageManager->has(StorageManager::DEFAULT_PROFILE)) {
             return null;
         }
-        if (! $this->storageManager->has(StorageManager::DEFAULT_PROFILE)) {
-            return null;
-        }
-        $backend = $this->storageManager->get(StorageManager::DEFAULT_PROFILE);
 
-        $entry = $backend->store(
-            new \Contenir\Storage\UploadInput(
-                $tmpPath,
-                $clientName,
-                $mimeType !== '' ? $mimeType : null,
-            ),
-            'forms/' . trim($form->slug, '/'),
-        );
+        $entry = $this->storageManager
+            ->get(StorageManager::DEFAULT_PROFILE)
+            ->store(new UploadInput($tmpPath, $clientName, $mimeType), 'forms/' . trim($form->slug, characters: '/'));
 
         return $entry->path;
     }
 
     /**
-     * Walks every field with a conditional rule and, for those whose rule fails
-     * against the submitted data, relaxes the corresponding InputFilter input
-     * (non-required + allow-empty) and excludes it from the validation group.
-     * Returns the names of hidden fields so the caller can drop their values
-     * from the submission payload — leftover state in $post for a hidden field
-     * must not be persisted.
-     *
-     * @param array<string, mixed> $post
-     * @return list<string>
-     */
-    private function applyConditionalGating(FormInterface $built, FormDefinition $form, array $post): array
-    {
-        $inputFilter = $built->getInputFilter();
-        $hidden      = [];
-
-        foreach ($form->getAllFields() as $field) {
-            if ($field->conditional === null || ! $inputFilter->has($field->name)) {
-                continue;
-            }
-            if ($this->conditionalEvaluator->shouldShow($field->conditional, $post)) {
-                continue;
-            }
-            $hidden[]  = $field->name;
-            $input     = $inputFilter->get($field->name);
-            $input->setRequired(false);
-            $input->setAllowEmpty(true);
-        }
-
-        if ($hidden !== []) {
-            $allNames = array_keys($inputFilter->getInputs());
-            $built->setValidationGroup(array_values(array_diff($allNames, $hidden)));
-        }
-
-        return $hidden;
-    }
-
-    /**
-     * @param array<string, mixed> $post
-     * @return array<string, mixed>
-     */
-    private function collectValues(FormInterface $form, array $post, bool $valid): array
-    {
-        if ($valid) {
-            $data = $form->getData(FormInterface::VALUES_NORMALIZED);
-            $values = is_array($data) ? $data : $post;
-        } else {
-            $values = $post;
-        }
-        unset(
-            $values[FormBuilderService::CSRF_NAME],
-            $values[FormBuilderService::HONEYPOT_NAME],
-            $values['_submit'],
-        );
-        return $values;
-    }
-
-    /**
      * @param array<string, mixed> $context
-     * @return array<string, mixed>
      */
-    private function buildEntryAttributes(FormInterface $form, array $context, ?string $date = null): array
+    private function updateEntryRegistry(BuilderForm $form, array $context, string $date): void
     {
-        return [
-            'id'     => $this->extractEntryId($form),
-            'date'   => $date ?? (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
-            'ip'     => $context['ip'] ?? '',
-            'status' => ($form instanceof BuilderForm && $form->registry instanceof \ArrayObject)
-                ? $form->registry['entry_status'] ?? 'complete'
-                : 'complete',
-        ];
+        $form->registry?->offsetSet('entry', $this->buildEntryAttributes($form, $context, $date));
     }
 
-    private function extractEntryId(FormInterface $form): ?int
+    /**
+     * @param array<string, mixed> $values
+     *
+     * @return array<string, mixed>
+     */
+    private function withoutInternalValues(array $values): array
     {
-        if (! $form instanceof BuilderForm || ! $form->registry instanceof \ArrayObject) {
-            return null;
-        }
-        $entryId = $form->registry['entry_id'] ?? null;
-        return is_int($entryId) ? $entryId : null;
+        unset($values[FormBuilderService::CSRF_NAME], $values[FormBuilderService::HONEYPOT_NAME], $values['_submit']);
+
+        return $values;
     }
 }

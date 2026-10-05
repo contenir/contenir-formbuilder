@@ -4,6 +4,14 @@ declare(strict_types=1);
 
 namespace Contenir\FormBuilder\Conditional;
 
+use function array_filter;
+use function array_map;
+use function array_values;
+use function in_array;
+use function is_array;
+use function is_scalar;
+use function trim;
+
 /**
  * Translates the admin field-edit POST shape into the rule JSON consumed by
  * {@see RuleEvaluator}.
@@ -23,10 +31,12 @@ namespace Contenir\FormBuilder\Conditional;
  *
  * Returns null when no usable conditions remain — null means "always show",
  * so the form ends up unrolling cleanly to a non-conditional field on save.
+ *
+ * @api
  */
 class ConditionalRulesParser
 {
-    private const VALID_OPS = [
+    private const array VALID_OPS = [
         RuleEvaluator::OP_EQUALS,
         RuleEvaluator::OP_NOT_EQUALS,
         RuleEvaluator::OP_IS_EMPTY,
@@ -34,16 +44,18 @@ class ConditionalRulesParser
         RuleEvaluator::OP_CONTAINS,
     ];
 
-    private const VALUELESS_OPS = [
+    private const array VALUELESS_OPS = [
         RuleEvaluator::OP_IS_EMPTY,
         RuleEvaluator::OP_IS_NOT_EMPTY,
     ];
 
     /**
-     * @param mixed $post
      * @return array<string, mixed>|null
+     *
+     * @mago-expect analysis:mixed-assignment POST data is untyped; each value is checked before use.
+     * @mago-expect lint:prefer-first-class-callable Xdebug records no branch coverage through a first-class callable.
      */
-    public static function parse($post): ?array
+    public static function parse(mixed $post): ?array
     {
         if (! is_array($post)) {
             return null;
@@ -55,15 +67,11 @@ class ConditionalRulesParser
             return null;
         }
 
-        $conditions = [];
-        foreach ($rawRows as $row) {
-            $condition = self::normaliseRow($row);
-            if ($condition !== null) {
-                $conditions[] = $condition;
-            }
-        }
+        $normalise  = /** @return array{field: string, op: string, value?: string}|null */
+        static fn(mixed $row): ?array => self::normaliseRow($row);
+        $conditions = array_values(array_filter(array_map($normalise, $rawRows)));
 
-        if ($conditions === []) {
+        if ([] === $conditions) {
             return null;
         }
 
@@ -71,24 +79,30 @@ class ConditionalRulesParser
     }
 
     /**
-     * @param mixed $row
-     * @return array<string, mixed>|null
+     * @return array{field: string, op: string, value?: string}|null
      */
-    private static function normaliseRow($row): ?array
+    private static function normaliseRow(mixed $row): ?array
     {
         if (! is_array($row)) {
             return null;
         }
-        $field = trim((string) ($row['field'] ?? ''));
-        $op    = (string) ($row['op'] ?? '');
-        if ($field === '' || ! in_array($op, self::VALID_OPS, true)) {
+
+        $field = trim(self::scalarString($row['field'] ?? null));
+        $op    = self::scalarString($row['op'] ?? null);
+        if ('' === $field || ! in_array($op, self::VALID_OPS, strict: true)) {
             return null;
         }
 
         $condition = ['field' => $field, 'op' => $op];
-        if (! in_array($op, self::VALUELESS_OPS, true)) {
-            $condition['value'] = (string) ($row['value'] ?? '');
+        if (! in_array($op, self::VALUELESS_OPS, strict: true)) {
+            $condition['value'] = self::scalarString($row['value'] ?? null);
         }
+
         return $condition;
+    }
+
+    private static function scalarString(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 }

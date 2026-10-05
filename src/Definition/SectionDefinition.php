@@ -11,10 +11,16 @@ namespace Contenir\FormBuilder\Definition;
  * (used in multi-step navigation when the parent form's `layout_mode` is
  * `stepped`); {@see $legend} is the optional human label rendered above
  * the section's groups.
+ *
+ * @api
  */
 final class SectionDefinition
 {
-    /** @param list<GroupDefinition> $groups */
+    /**
+     * @param list<GroupDefinition> $groups
+     *
+     * @mago-expect lint:excessive-parameter-list Immutable value object; the promoted constructor is its public shape and is called with named arguments.
+     */
     public function __construct(
         public readonly ?int $id,
         public readonly string $key,
@@ -22,6 +28,5 @@ final class SectionDefinition
         public readonly ?string $description = null,
         public readonly int $sort = 0,
         public readonly array $groups = [],
-    ) {
-    }
+    ) {}
 }

@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 namespace Contenir\FormBuilder\FieldType;
 
+use OutOfBoundsException;
+
+use function array_filter;
+use function array_key_exists;
+use function array_values;
+use function sprintf;
+
 /**
  * Lookup table of available field types, keyed by {@see FieldTypeInterface::key()}.
  *
@@ -13,6 +20,8 @@ namespace Contenir\FormBuilder\FieldType;
  * editing this class.
  *
  * @throws \OutOfBoundsException From {@see get()} when the requested key is unknown.
+ *
+ * @api
  */
 class FieldTypeRegistry
 {
@@ -26,7 +35,7 @@ class FieldTypeRegistry
             $this->register($type);
         }
 
-        if ($extras !== null) {
+        if (null !== $extras) {
             foreach ($extras as $extra) {
                 $this->register($extra);
             }
@@ -57,14 +66,10 @@ class FieldTypeRegistry
         ];
     }
 
-    public function register(FieldTypeInterface $type): void
+    /** @return list<FieldTypeInterface> */
+    public function all(): array
     {
-        $this->types[$type->key()] = $type;
-    }
-
-    public function has(string $key): bool
-    {
-        return isset($this->types[$key]);
+        return array_values($this->types);
     }
 
     /**
@@ -72,16 +77,20 @@ class FieldTypeRegistry
      */
     public function get(string $key): FieldTypeInterface
     {
-        if (! isset($this->types[$key])) {
-            throw new \OutOfBoundsException(sprintf('Unknown field type "%s"', $key));
+        if (! array_key_exists($key, $this->types)) {
+            throw new OutOfBoundsException(sprintf('Unknown field type "%s"', $key));
         }
         return $this->types[$key];
     }
 
-    /** @return list<FieldTypeInterface> */
-    public function all(): array
+    public function has(string $key): bool
     {
-        return array_values($this->types);
+        return array_key_exists($key, $this->types);
+    }
+
+    public function register(FieldTypeInterface $type): void
+    {
+        $this->types[$type->key()] = $type;
     }
 
     /** @return list<FieldTypeInterface> */
@@ -89,7 +98,7 @@ class FieldTypeRegistry
     {
         return array_values(array_filter(
             $this->types,
-            static fn (FieldTypeInterface $type): bool => $type->isUserSelectable()
+            static fn(FieldTypeInterface $type): bool => $type->isUserSelectable(),
         ));
     }
 }

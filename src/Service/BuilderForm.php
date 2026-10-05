@@ -4,7 +4,14 @@ declare(strict_types=1);
 
 namespace Contenir\FormBuilder\Service;
 
+use ArrayObject;
 use Laminas\Form\Form;
+use Override;
+use SplObserver;
+use SplSubject;
+
+use function array_search;
+use function array_values;
 
 /**
  * Laminas\Form subclass exposing a public {@see $registry} property and acting
@@ -15,30 +22,38 @@ use Laminas\Form\Form;
  * SplSubject so the form can be passed directly to {@see \SplObserver::update()}
  * — the {@see FormSubmissionService} owns observer dispatch, so the methods
  * here are sufficient for the type contract.
+ *
+ * @api
+ *
+ * @extends Form<array<string, mixed>>
  */
-class BuilderForm extends Form implements \SplSubject
+class BuilderForm extends Form implements SplSubject
 {
-    public ?\ArrayObject $registry = null;
+    /** @var ArrayObject<string, mixed>|null */
+    public ?ArrayObject $registry = null;
 
-    /** @var list<\SplObserver> */
+    /** @var list<SplObserver> */
     private array $observers = [];
 
-    public function attach(\SplObserver $observer): void
+    #[Override]
+    public function attach(SplObserver $observer): void
     {
         $this->observers[] = $observer;
     }
 
-    public function detach(\SplObserver $observer): void
+    #[Override]
+    public function detach(SplObserver $observer): void
     {
-        foreach ($this->observers as $index => $existing) {
-            if ($existing === $observer) {
-                unset($this->observers[$index]);
-                $this->observers = array_values($this->observers);
-                return;
-            }
+        $index = array_search($observer, $this->observers, strict: true);
+        if (false === $index) {
+            return;
         }
+
+        unset($this->observers[$index]);
+        $this->observers = array_values($this->observers);
     }
 
+    #[Override]
     public function notify(): void
     {
         foreach ($this->observers as $observer) {

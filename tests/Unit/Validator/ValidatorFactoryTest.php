@@ -4,32 +4,25 @@ declare(strict_types=1);
 
 namespace Contenir\FormBuilder\Tests\Unit\Validator;
 
-use Laminas\Validator\Between;
-use Laminas\Validator\EmailAddress;
-use Laminas\Validator\Hostname;
-use Laminas\Validator\Regex;
-use Laminas\Validator\StringLength;
 use Contenir\FormBuilder\Definition\ValidatorDefinition;
 use Contenir\FormBuilder\Validator\ValidatorFactory;
+use InvalidArgumentException;
+use Laminas\Validator\Between;
+use Laminas\Validator\Callback;
+use Laminas\Validator\EmailAddress;
+use Laminas\Validator\Regex;
+use Laminas\Validator\StringLength;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+
+use function array_column;
+use function array_values;
 
 #[Group('unit')]
 final class ValidatorFactoryTest extends TestCase
 {
-    public function testRequiredReturnsNullBecauseItIsHandledOnTheInputFilter(): void
-    {
-        $factory = new ValidatorFactory();
-        self::assertNull($factory->create(new ValidatorDefinition(ValidatorFactory::TYPE_REQUIRED)));
-    }
-
-    public function testConfirmReturnsNullBecauseItIsAttachedAsCrossFieldRule(): void
-    {
-        $factory = new ValidatorFactory();
-        self::assertNull($factory->create(new ValidatorDefinition(ValidatorFactory::TYPE_CONFIRM)));
-    }
-
     /** @return array<string, array{string, class-string}> */
     public static function knownTypeProvider(): array
     {
@@ -37,28 +30,56 @@ final class ValidatorFactoryTest extends TestCase
             'string_length' => [ValidatorFactory::TYPE_STRING_LENGTH, StringLength::class],
             'between'       => [ValidatorFactory::TYPE_BETWEEN, Between::class],
             'email'         => [ValidatorFactory::TYPE_EMAIL, EmailAddress::class],
-            'url'           => [ValidatorFactory::TYPE_URL, Hostname::class],
+            'url'           => [ValidatorFactory::TYPE_URL, Callback::class],
             'regex'         => [ValidatorFactory::TYPE_REGEX, Regex::class],
         ];
     }
 
-    /** @param class-string $expectedClass */
-    #[DataProvider('knownTypeProvider')]
-    public function testKnownTypesProduceExpectedValidators(string $type, string $expectedClass): void
+    /**
+     * @return array<string, array{string, array<string, mixed>, mixed, bool}>
+     */
+    public static function validationProvider(): array
     {
-        $factory   = new ValidatorFactory();
-        $validator = $factory->create(new ValidatorDefinition($type, ['min' => 0, 'max' => 5, 'pattern' => '/.*/']));
-
-        self::assertInstanceOf($expectedClass, $validator);
+        return [
+            'url accepts https'                 => ['url', [], 'https://example.com/path?q=1', true],
+            'url accepts http'                  => ['url', [], 'http://example.com', true],
+            'url rejects bare hostname'         => ['url', [], 'example.com', false],
+            'url rejects other schemes'         => ['url', [], 'ftp://example.com', false],
+            'url rejects non-strings'           => ['url', [], 42, false],
+            'length within min and max'         => ['string_length', ['min' => '2', 'max' => '4'], 'abc', true],
+            'length above max'                  => ['string_length', ['min' => 2, 'max' => 4], 'abcde', false],
+            'length without options'            => ['string_length', [], 'any length at all', true],
+            'non-numeric max is ignored'        => ['string_length', ['max' => 'many'], 'abcdef', true],
+            'between inclusive by default'      => ['between', ['min' => 1, 'max' => 5], 5, true],
+            'between exclusive from checkbox 0' => ['between', ['min' => 1, 'max' => 5, 'inclusive' => '0'], 5, false],
+            'between open-ended maximum'        => ['between', ['min' => 1], 1000, true],
+            'regex pattern applied'             => ['regex', ['pattern' => '/^[0-9]+$/'], 'abc', false],
+            'regex without pattern matches all' => ['regex', ['pattern' => ''], 'abc', true],
+        ];
     }
 
-    public function testUnknownTypeThrows(): void
+    /**
+     * @param array<string, mixed> $options
+     */
+    #[Test]
+    #[DataProvider('validationProvider')]
+    public function configuresTheValidatorFromItsOptions(string $type, array $options, mixed $value, bool $valid): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        (new ValidatorFactory())->create(new ValidatorDefinition('not_a_real_validator'));
+        $validator = (new ValidatorFactory())->create(new ValidatorDefinition($type, $options));
+
+        static::assertNotNull($validator);
+        static::assertSame($valid, $validator->isValid($value));
     }
 
-    public function testCustomMessageIsApplied(): void
+    #[Test]
+    public function confirmReturnsNullBecauseItIsAttachedAsCrossFieldRule(): void
+    {
+        $factory = new ValidatorFactory();
+        static::assertNull($factory->create(new ValidatorDefinition(ValidatorFactory::TYPE_CONFIRM)));
+    }
+
+    #[Test]
+    public function customMessageIsApplied(): void
     {
         $factory   = new ValidatorFactory();
         $validator = $factory->create(new ValidatorDefinition(
@@ -67,8 +88,63 @@ final class ValidatorFactoryTest extends TestCase
             'Custom email error',
         ));
 
-        self::assertNotNull($validator);
+        static::assertNotNull($validator);
         $validator->isValid('not-an-email');
-        self::assertContains('Custom email error', $validator->getMessages());
+        static::assertContains('Custom email error', $validator->getMessages());
+    }
+
+    #[Test]
+    public function emptyCustomMessageKeepsTheDefault(): void
+    {
+        $validator = (new ValidatorFactory())->create(new ValidatorDefinition(ValidatorFactory::TYPE_URL, message: ''));
+
+        static::assertNotNull($validator);
+        $validator->isValid('x');
+        static::assertSame(['The input is not a valid http or https URL'], array_values($validator->getMessages()));
+    }
+
+    /** @param class-string $expectedClass */
+    #[Test]
+    #[DataProvider('knownTypeProvider')]
+    public function knownTypesProduceExpectedValidators(string $type, string $expectedClass): void
+    {
+        $factory   = new ValidatorFactory();
+        $validator = $factory->create(new ValidatorDefinition($type, ['min' => 0, 'max' => 5, 'pattern' => '/.*/']));
+
+        static::assertInstanceOf($expectedClass, $validator);
+    }
+
+    #[Test]
+    public function requiredReturnsNullBecauseItIsHandledOnTheInputFilter(): void
+    {
+        $factory = new ValidatorFactory();
+        static::assertNull($factory->create(new ValidatorDefinition(ValidatorFactory::TYPE_REQUIRED)));
+    }
+
+    #[Test]
+    public function unknownTypeThrows(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unknown validator type "not_a_real_validator"');
+        (new ValidatorFactory())->create(new ValidatorDefinition('not_a_real_validator'));
+    }
+
+    #[Test]
+    public function urlValidatorExplainsTheFailure(): void
+    {
+        $validator = (new ValidatorFactory())->create(new ValidatorDefinition(ValidatorFactory::TYPE_URL));
+
+        static::assertNotNull($validator);
+        $validator->isValid('example.com');
+        static::assertSame(['The input is not a valid http or https URL'], array_values($validator->getMessages()));
+    }
+
+    #[Test]
+    public function vocabularyOmitsRequiredAndListsEveryOtherType(): void
+    {
+        static::assertSame(
+            ['string_length', 'between', 'email', 'url', 'regex', 'confirm'],
+            array_column(ValidatorFactory::vocabulary(), 'type'),
+        );
     }
 }

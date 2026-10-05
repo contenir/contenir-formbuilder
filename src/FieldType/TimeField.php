@@ -4,32 +4,41 @@ declare(strict_types=1);
 
 namespace Contenir\FormBuilder\FieldType;
 
+use Contenir\FormBuilder\Definition\FieldDefinition;
 use Laminas\Form\Element\Time;
 use Laminas\Form\ElementInterface;
-use Contenir\FormBuilder\Definition\FieldDefinition;
+use Override;
 
+/**
+ * @api
+ */
 class TimeField extends AbstractFieldType
 {
-    public function key(): string
-    {
-        return 'time';
-    }
-
-    public function label(): string
-    {
-        return 'Time';
-    }
-
+    #[Override]
     public function icon(): string
     {
         return 'clock';
     }
 
+    #[Override]
+    public function key(): string
+    {
+        return 'time';
+    }
+
+    #[Override]
+    public function label(): string
+    {
+        return 'Time';
+    }
+
+    #[Override]
     public function supportedGroups(): array
     {
         return ['label', 'visibility', 'description', 'default', 'required', 'conditional'];
     }
 
+    #[Override]
     protected function createElement(FieldDefinition $field): ElementInterface
     {
         return new Time($field->name);
