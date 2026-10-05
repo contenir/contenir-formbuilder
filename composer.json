@@ -17,6 +17,9 @@
         "php-db/phpdb-qa-tools": "0.1.x-dev",
         "phpunit/phpunit": "^11.5.42"
     },
+    "conflict": {
+        "laminas/laminas-stdlib": "<3.19"
+    },
     "suggest": {
         "contenir/storage": "Required for the file field type. Pass a Contenir\\Storage\\StorageManager into FormSubmissionService when uploads need to land on a configured storage profile."
     },

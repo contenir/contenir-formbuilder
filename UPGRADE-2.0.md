@@ -8,6 +8,7 @@ package's classes or rely on the behaviours that were fixed.
 | --- | --- | --- |
 | PHP | ^8.1 | 8.3, 8.4 or 8.5 |
 | laminas-session | not required (needed at runtime anyway) | ^2.16, required |
+| laminas-stdlib (indirect) | any | 3.19+ (conflict with older) |
 | contenir/storage (optional) | ^0.1 | ^0.1 or ^2.0 |
 
 ```bash
