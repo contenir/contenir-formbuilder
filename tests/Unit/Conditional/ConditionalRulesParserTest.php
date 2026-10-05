@@ -6,41 +6,43 @@ namespace Contenir\FormBuilder\Tests\Unit\Conditional;
 
 use Contenir\FormBuilder\Conditional\ConditionalRulesParser;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 #[Group('unit')]
 final class ConditionalRulesParserTest extends TestCase
 {
-    public function testNonArrayInputReturnsNull(): void
-    {
-        self::assertNull(ConditionalRulesParser::parse('not an array'));
-        self::assertNull(ConditionalRulesParser::parse(null));
-    }
-
-    public function testEmptyConditionsReturnsNull(): void
-    {
-        self::assertNull(ConditionalRulesParser::parse(['combinator' => 'all']));
-        self::assertNull(ConditionalRulesParser::parse(['combinator' => 'all', 'conditions' => []]));
-    }
-
-    public function testRowsMissingFieldOrOpAreDropped(): void
+    #[Test]
+    public function anyCombinatorIsHonoured(): void
     {
         $out = ConditionalRulesParser::parse([
-            'combinator' => 'all',
-            'conditions' => [
-                ['field' => '', 'op' => 'equals', 'value' => 'x'],
-                ['field' => 'a', 'op' => '',      'value' => 'x'],
-                ['field' => 'b', 'op' => 'equals', 'value' => 'x'],
-            ],
+            'combinator' => 'any',
+            'conditions' => [['field' => 'a', 'op' => 'equals', 'value' => 'x']],
         ]);
 
-        self::assertSame(
-            ['show_when' => ['all' => [['field' => 'b', 'op' => 'equals', 'value' => 'x']]]],
-            $out,
-        );
+        static::assertArrayHasKey('any', $out['show_when']);
     }
 
-    public function testInvalidOperatorIsRejected(): void
+    #[Test]
+    public function combinatorDefaultsToAll(): void
+    {
+        $out = ConditionalRulesParser::parse([
+            'conditions' => [['field' => 'a', 'op' => 'equals', 'value' => 'x']],
+        ]);
+
+        static::assertArrayHasKey('show_when', $out);
+        static::assertArrayHasKey('all', $out['show_when']);
+    }
+
+    #[Test]
+    public function emptyConditionsReturnsNull(): void
+    {
+        static::assertNull(ConditionalRulesParser::parse(['combinator' => 'all']));
+        static::assertNull(ConditionalRulesParser::parse(['combinator' => 'all', 'conditions' => []]));
+    }
+
+    #[Test]
+    public function invalidOperatorIsRejected(): void
     {
         $out = ConditionalRulesParser::parse([
             'combinator' => 'all',
@@ -49,55 +51,17 @@ final class ConditionalRulesParserTest extends TestCase
             ],
         ]);
 
-        self::assertNull($out);
+        static::assertNull($out);
     }
 
-    public function testValuelessOperatorsStripValue(): void
+    #[Test]
+    public function nonArrayConditionsReturnNull(): void
     {
-        $out = ConditionalRulesParser::parse([
-            'combinator' => 'all',
-            'conditions' => [
-                ['field' => 'a', 'op' => 'is_empty', 'value' => 'leftover'],
-            ],
-        ]);
-
-        self::assertSame(
-            ['show_when' => ['all' => [['field' => 'a', 'op' => 'is_empty']]]],
-            $out,
-        );
+        static::assertNull(ConditionalRulesParser::parse(['combinator' => 'all', 'conditions' => 'x']));
     }
 
-    public function testCombinatorDefaultsToAll(): void
-    {
-        $out = ConditionalRulesParser::parse([
-            'conditions' => [['field' => 'a', 'op' => 'equals', 'value' => 'x']],
-        ]);
-
-        self::assertArrayHasKey('show_when', $out);
-        self::assertArrayHasKey('all', $out['show_when']);
-    }
-
-    public function testAnyCombinatorIsHonoured(): void
-    {
-        $out = ConditionalRulesParser::parse([
-            'combinator' => 'any',
-            'conditions' => [['field' => 'a', 'op' => 'equals', 'value' => 'x']],
-        ]);
-
-        self::assertArrayHasKey('any', $out['show_when']);
-    }
-
-    public function testUnknownCombinatorFallsBackToAll(): void
-    {
-        $out = ConditionalRulesParser::parse([
-            'combinator' => 'maybe',
-            'conditions' => [['field' => 'a', 'op' => 'equals', 'value' => 'x']],
-        ]);
-
-        self::assertArrayHasKey('all', $out['show_when']);
-    }
-
-    public function testNonArrayConditionsRowIsSkipped(): void
+    #[Test]
+    public function nonArrayConditionsRowIsSkipped(): void
     {
         $out = ConditionalRulesParser::parse([
             'combinator' => 'all',
@@ -107,6 +71,71 @@ final class ConditionalRulesParserTest extends TestCase
             ],
         ]);
 
-        self::assertCount(1, $out['show_when']['all']);
+        static::assertCount(1, $out['show_when']['all']);
+    }
+
+    #[Test]
+    public function nonArrayInputReturnsNull(): void
+    {
+        static::assertNull(ConditionalRulesParser::parse('not an array'));
+        static::assertNull(ConditionalRulesParser::parse(null));
+    }
+
+    #[Test]
+    public function nonScalarRowValuesAreTreatedAsEmpty(): void
+    {
+        $out = ConditionalRulesParser::parse([
+            'conditions' => [
+                ['field' => ['a'], 'op' => 'equals', 'value' => 'x'],
+                ['field' => 'b', 'op' => 'equals', 'value' => ['x']],
+            ],
+        ]);
+
+        static::assertSame(['show_when' => ['all' => [['field' => 'b', 'op' => 'equals', 'value' => '']]]], $out);
+    }
+
+    #[Test]
+    public function rowsMissingFieldOrOpAreDropped(): void
+    {
+        $out = ConditionalRulesParser::parse([
+            'combinator' => 'all',
+            'conditions' => [
+                ['field' => '', 'op' => 'equals', 'value' => 'x'],
+                ['field' => 'a', 'op' => '', 'value' => 'x'],
+                ['field' => 'b', 'op' => 'equals', 'value' => 'x'],
+            ],
+        ]);
+
+        static::assertSame(
+            ['show_when' => ['all' => [['field' => 'b', 'op' => 'equals', 'value' => 'x']]]],
+            $out,
+        );
+    }
+
+    #[Test]
+    public function unknownCombinatorFallsBackToAll(): void
+    {
+        $out = ConditionalRulesParser::parse([
+            'combinator' => 'maybe',
+            'conditions' => [['field' => 'a', 'op' => 'equals', 'value' => 'x']],
+        ]);
+
+        static::assertArrayHasKey('all', $out['show_when']);
+    }
+
+    #[Test]
+    public function valuelessOperatorsStripValue(): void
+    {
+        $out = ConditionalRulesParser::parse([
+            'combinator' => 'all',
+            'conditions' => [
+                ['field' => 'a', 'op' => 'is_empty', 'value' => 'leftover'],
+            ],
+        ]);
+
+        static::assertSame(
+            ['show_when' => ['all' => [['field' => 'a', 'op' => 'is_empty']]]],
+            $out,
+        );
     }
 }

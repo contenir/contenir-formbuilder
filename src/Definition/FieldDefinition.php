@@ -29,6 +29,8 @@ namespace Contenir\FormBuilder\Definition;
  *     filters?: list<string>,
  *     conditional?: FieldOptions|null
  * }
+ *
+ * @api
  */
 final class FieldDefinition
 {
@@ -37,6 +39,8 @@ final class FieldDefinition
      * @param list<ValidatorDefinition> $validators
      * @param list<string> $filters
      * @param FieldOptions|null $conditional
+     *
+     * @mago-expect lint:excessive-parameter-list Immutable value object; the promoted constructor is its public shape and is called with named arguments.
      */
     public function __construct(
         public readonly ?int $id,
@@ -54,6 +58,5 @@ final class FieldDefinition
         public readonly array $validators = [],
         public readonly array $filters = [],
         public readonly ?array $conditional = null,
-    ) {
-    }
+    ) {}
 }

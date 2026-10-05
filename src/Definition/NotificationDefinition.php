@@ -11,10 +11,16 @@ namespace Contenir\FormBuilder\Definition;
  * {@see \Contenir\FormBuilder\Service\TokenReplacer} before sending.
  *
  * @phpstan-type NotificationConditions array<string, mixed>|null
+ *
+ * @api
  */
 final class NotificationDefinition
 {
-    /** @param NotificationConditions $conditions */
+    /**
+     * @param NotificationConditions $conditions
+     *
+     * @mago-expect lint:excessive-parameter-list Immutable value object; the promoted constructor is its public shape and is called with named arguments.
+     */
     public function __construct(
         public readonly ?int $id,
         public readonly string $name,
@@ -27,6 +33,5 @@ final class NotificationDefinition
         public readonly ?array $conditions = null,
         public readonly bool $enabled = true,
         public readonly int $sort = 0,
-    ) {
-    }
+    ) {}
 }

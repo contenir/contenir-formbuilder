@@ -7,6 +7,18 @@ namespace Contenir\FormBuilder\Service;
 use Contenir\FormBuilder\Definition\FieldDefinition;
 use Contenir\FormBuilder\Definition\FormDefinition;
 
+use function array_key_exists;
+use function htmlspecialchars;
+use function implode;
+use function is_array;
+use function is_scalar;
+use function nl2br;
+use function preg_replace_callback;
+use function sprintf;
+use function strtolower;
+
+use const ENT_QUOTES;
+
 /**
  * Substitutes `{namespace:key}` merge tags inside notification templates.
  *
@@ -20,18 +32,32 @@ use Contenir\FormBuilder\Definition\FormDefinition;
  *
  * Unknown tokens are left intact so they remain visible to the recipient
  * rather than silently disappearing — this surfaces typos in templates.
+ *
+ * @api
+ *
+ * @mago-expect lint:cyclomatic-complexity Kept whole for 2.0 (one resolver per token namespace); splitting it is a proposed follow-up.
+ * @mago-expect lint:kan-defect Kept whole for 2.0 (one resolver per token namespace); splitting it is a proposed follow-up.
+ * @mago-expect lint:too-many-methods Kept whole for 2.0 (one resolver per token namespace); splitting it is a proposed follow-up.
  */
-class TokenReplacer
+final class TokenReplacer
 {
+    private const string FIELDS_ROW =
+        '<tr>'
+            . '<td width="40%%" style="width: 40%%; padding: 10px 16px 10px 0; vertical-align: top; color: #51545E; font-size: 15px; line-height: 1.4;">%s</td>'
+            . '<td width="60%%" align="right" style="width: 60%%; padding: 10px 0; vertical-align: top; text-align: right; color: #51545E; font-size: 15px; line-height: 1.4;">%s</td>'
+            . '</tr>';
+
     /** @var array<string, callable(string): ?string> */
     private array $providers = [];
 
     /**
      * @param array<string, mixed> $siteContext  Static values for `site:*` tokens.
+     *
+     * @mago-expect analysis:mixed-assignment Site context values are untyped; non-scalars resolve to an empty string.
      */
     public function __construct(array $siteContext = [])
     {
-        if ($siteContext !== []) {
+        if ([] !== $siteContext) {
             $this->register('site', static function (string $key) use ($siteContext): ?string {
                 if (! array_key_exists($key, $siteContext)) {
                     return null;
@@ -40,6 +66,25 @@ class TokenReplacer
                 return is_scalar($value) ? (string) $value : '';
             });
         }
+    }
+
+    /**
+     * @param array<array-key, mixed> $values
+     *
+     * @mago-expect analysis:mixed-assignment Multi-value fields hold untyped entries; non-scalars are skipped.
+     */
+    private static function joinScalars(array $values): string
+    {
+        $strings = [];
+        foreach ($values as $value) {
+            if (! is_scalar($value)) {
+                continue;
+            }
+
+            $strings[] = (string) $value;
+        }
+
+        return implode(', ', $strings);
     }
 
     /**
@@ -89,6 +134,10 @@ class TokenReplacer
      * @param array<string, mixed> $values
      * @param array<string, mixed> $entry
      * @param (callable(string): string)|null $postProcess
+     *
+     * @mago-expect analysis:possibly-undefined-string-array-index The pattern's named groups always participate in a match.
+     * @mago-expect analysis:possibly-undefined-int-array-index Index 0 always holds the whole match.
+     * @mago-expect analysis:possibly-null-argument The match groups read above are always set, so never null.
      */
     private function dispatch(
         string $template,
@@ -97,15 +146,16 @@ class TokenReplacer
         array $entry,
         ?callable $postProcess,
     ): string {
-        if ($template === '') {
+        if ('' === $template) {
             return '';
         }
 
         return (string) preg_replace_callback(
             '/\{(?<ns>[a-z]+):(?<key>[a-z0-9_\-\.]+)\}/i',
+            /** @param array<array-key, string> $matches */
             function (array $matches) use ($form, $values, $entry, $postProcess): string {
-                $namespace = strtolower((string) $matches['ns']);
-                $key       = (string) $matches['key'];
+                $namespace = strtolower($matches['ns']);
+                $key       = $matches['key'];
                 $original  = $matches[0];
 
                 $resolved = match ($namespace) {
@@ -115,69 +165,20 @@ class TokenReplacer
                     default => $this->resolveCustom($namespace, $key, $original),
                 };
 
-                if ($postProcess === null || $resolved === $original) {
+                if (null === $postProcess || $resolved === $original) {
                     return $resolved;
                 }
 
                 return $postProcess($resolved);
             },
-            $template
+            $template,
         );
-    }
-
-    /** @param array<string, mixed> $values */
-    private function resolveField(array $values, string $key, string $original): string
-    {
-        if (! array_key_exists($key, $values)) {
-            return $original;
-        }
-        $value = $values[$key];
-        if (is_array($value)) {
-            $flat = array_filter($value, static fn ($v): bool => is_scalar($v));
-            return implode(', ', array_map(static fn ($v): string => (string) $v, $flat));
-        }
-        return is_scalar($value) ? (string) $value : '';
-    }
-
-    private function resolveForm(FormDefinition $form, string $key, string $original): string
-    {
-        return match ($key) {
-            'title'       => $form->title,
-            'slug'        => $form->slug,
-            'description' => $form->description ?? '',
-            default       => $original,
-        };
-    }
-
-    /**
-     * @param array<string, mixed> $entry
-     * @param array<string, mixed> $values
-     */
-    private function resolveEntry(array $entry, string $key, string $original, FormDefinition $form, array $values): string
-    {
-        if ($key === 'fields') {
-            return $this->renderFieldsTable($form, $values);
-        }
-        if (! array_key_exists($key, $entry)) {
-            return $original;
-        }
-        $value = $entry[$key];
-        return is_scalar($value) ? (string) $value : $original;
-    }
-
-    private function resolveCustom(string $namespace, string $key, string $original): string
-    {
-        if (! isset($this->providers[$namespace])) {
-            return $original;
-        }
-        $value = ($this->providers[$namespace])($key);
-        return $value === null ? $original : $value;
     }
 
     /**
      * Render every visible field as an inline-styled HTML key/value table.
      *
-     * Skips fields whose `type` is `hidden`. Empty values render as an
+     * Skips `hidden` fields and `content` blocks, which collect no data. Empty values render as an
      * em-dash so the recipient can tell a field exists but wasn't filled in.
      * Inline styles match the Postmark/Cerberus transactional aesthetic
      * (40/60 split, right-aligned values, neutral grey palette) so the
@@ -189,48 +190,101 @@ class TokenReplacer
     {
         $rows = [];
         foreach ($form->getAllFields() as $field) {
-            if ($field->type === 'hidden') {
+            if ('hidden' === $field->type || 'content' === $field->type) {
                 continue;
             }
-            $label = htmlspecialchars($field->label ?? $field->name, ENT_QUOTES, 'UTF-8');
-            $value = $this->renderFieldValue($field, $values[$field->name] ?? null);
-            $rows[] = '<tr>'
-                . '<td width="40%" style="width: 40%; padding: 10px 16px 10px 0; vertical-align: top; color: #51545E; font-size: 15px; line-height: 1.4;">' . $label . '</td>'
-                . '<td width="60%" align="right" style="width: 60%; padding: 10px 0; vertical-align: top; text-align: right; color: #51545E; font-size: 15px; line-height: 1.4;">' . $value . '</td>'
-                . '</tr>';
+            $label  = htmlspecialchars($field->label ?? $field->name, ENT_QUOTES, encoding: 'UTF-8');
+            $value  = $this->renderFieldValue($field, $values[$field->name] ?? null);
+            $rows[] = sprintf(self::FIELDS_ROW, $label, $value);
         }
 
-        if ($rows === []) {
+        if ([] === $rows) {
             return '';
         }
 
-        return '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width: 100%; border-collapse: collapse;">'
-            . implode('', $rows)
-            . '</table>';
+        return (
+            '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width: 100%; border-collapse: collapse;">'
+                . implode('', $rows)
+                . '</table>'
+        );
     }
 
     private function renderFieldValue(FieldDefinition $field, mixed $value): string
     {
-        if ($value === null || $value === '' || $value === []) {
+        $string = match (true) {
+            is_array($value)  => self::joinScalars($value),
+            is_scalar($value) => (string) $value,
+            default           => '',
+        };
+        if ('' === $string) {
             return '&mdash;';
         }
-        if (is_array($value)) {
-            $flat = array_filter($value, static fn ($v): bool => is_scalar($v));
-            if ($flat === []) {
-                return '&mdash;';
-            }
-            $value = implode(', ', array_map(static fn ($v): string => (string) $v, $flat));
-        }
-        if (! is_scalar($value)) {
-            return '&mdash;';
-        }
-
-        $string = (string) $value;
 
         return match ($field->type) {
-            'checkbox' => ($string === '' || $string === '0') ? 'No' : 'Yes',
-            'textarea' => nl2br(htmlspecialchars($string, ENT_QUOTES, 'UTF-8')),
-            default    => htmlspecialchars($string, ENT_QUOTES, 'UTF-8'),
+            'checkbox' => '0' === $string ? 'No' : 'Yes',
+            'textarea' => nl2br(htmlspecialchars($string, ENT_QUOTES, encoding: 'UTF-8')),
+            default    => htmlspecialchars($string, ENT_QUOTES, encoding: 'UTF-8'),
+        };
+    }
+
+    private function resolveCustom(string $namespace, string $key, string $original): string
+    {
+        $provider = $this->providers[$namespace] ?? null;
+        if (null === $provider) {
+            return $original;
+        }
+
+        return $provider($key) ?? $original;
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     * @param array<string, mixed> $values
+     *
+     * @mago-expect analysis:mixed-assignment Entry attributes are untyped; non-scalars leave the token intact.
+     */
+    private function resolveEntry(
+        array $entry,
+        string $key,
+        string $original,
+        FormDefinition $form,
+        array $values,
+    ): string {
+        if ('fields' === $key) {
+            return $this->renderFieldsTable($form, $values);
+        }
+        if (! array_key_exists($key, $entry)) {
+            return $original;
+        }
+        $value = $entry[$key];
+        return is_scalar($value) ? (string) $value : $original;
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     *
+     * @mago-expect analysis:mixed-assignment Submitted values are untyped; arrays are joined and other non-scalars resolve empty.
+     */
+    private function resolveField(array $values, string $key, string $original): string
+    {
+        if (! array_key_exists($key, $values)) {
+            return $original;
+        }
+        $value = $values[$key];
+        if (is_array($value)) {
+            return self::joinScalars($value);
+        }
+
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    private function resolveForm(FormDefinition $form, string $key, string $original): string
+    {
+        return match ($key) {
+            'title'       => $form->title,
+            'slug'        => $form->slug,
+            'description' => $form->description ?? '',
+            default       => $original,
         };
     }
 }

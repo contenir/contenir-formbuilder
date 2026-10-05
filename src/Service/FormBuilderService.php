@@ -4,18 +4,23 @@ declare(strict_types=1);
 
 namespace Contenir\FormBuilder\Service;
 
-use Laminas\Form\Element\Csrf;
-use Laminas\Form\Element\Submit;
-use Laminas\Form\Element\Text;
-use Laminas\Form\FormInterface;
-use Laminas\InputFilter\Input;
-use Laminas\InputFilter\InputFilter;
-use Laminas\Validator\Identical;
 use Contenir\FormBuilder\Definition\FieldDefinition;
 use Contenir\FormBuilder\Definition\FormDefinition;
 use Contenir\FormBuilder\Definition\ValidatorDefinition;
 use Contenir\FormBuilder\FieldType\FieldTypeRegistry;
 use Contenir\FormBuilder\Validator\ValidatorFactory;
+use Laminas\Form\Element\Csrf;
+use Laminas\Form\Element\Submit;
+use Laminas\Form\Element\Text;
+use Laminas\Form\Exception\ExceptionInterface as FormException;
+use Laminas\Form\FormInterface;
+use Laminas\InputFilter\Input;
+use Laminas\InputFilter\InputFilter;
+use Laminas\Validator\Identical;
+use OutOfBoundsException;
+use Override;
+
+use function is_string;
 
 /**
  * Assembles a Laminas form instance from a {@see FormDefinition}.
@@ -30,18 +35,28 @@ use Contenir\FormBuilder\Validator\ValidatorFactory;
  * declared on each {@see FieldDefinition}. Validation is configured on the
  * form's input filter; rendering is the host's
  * helper's responsibility.
+ *
+ * @api
+ *
  */
-class FormBuilderService
+final class FormBuilderService implements FormBuilderInterface
 {
-    public const CSRF_NAME     = '_csrf';
-    public const HONEYPOT_NAME = 'hid';
+    public const string CSRF_NAME     = '_csrf';
+    public const string HONEYPOT_NAME = 'hid';
 
     public function __construct(
         private FieldTypeRegistry $registry,
         private ValidatorFactory $validatorFactory,
-    ) {
-    }
+    ) {}
 
+    /**
+     * Fields whose type is unknown to the registry are skipped. Static types
+     * (content blocks) produce no element or input; the renderer emits their
+     * body in the row instead.
+     *
+     * @throws FormException When Laminas rejects an element.
+     */
+    #[Override]
     public function build(FormDefinition $form): FormInterface
     {
         $builder = new BuilderForm();
@@ -49,40 +64,21 @@ class FormBuilderService
         $builder->setAttribute('class', 'formbuilder__form formbuilder__form--stacked');
         $builder->setAttribute('autocomplete', 'on');
 
-        $inputFilter  = new InputFilter();
-        $confirmPairs = [];
+        $inputFilter = new InputFilter();
 
-        foreach ($form->sections as $section) {
-            foreach ($section->groups as $group) {
-                foreach ($group->rows as $row) {
-                    foreach ($row->fields as $field) {
-                        if (! $this->registry->has($field->type)) {
-                            continue;
-                        }
-                        $type = $this->registry->get($field->type);
-                        if ($type->isStatic()) {
-                            // Static blocks (content / instructions) don't
-                            // produce inputs — FormMarkup renders their
-                            // body separately at the row's column.
-                            continue;
-                        }
-                        $element = $type->buildElement($field);
-                        $builder->add($element);
-                        $inputFilter->add($this->buildInput($field, $confirmPairs));
-                    }
-                }
-            }
-        }
-
-        foreach ($confirmPairs as [$source, $target, $message]) {
-            if (! $inputFilter->has($source)) {
+        foreach ($form->getAllFields() as $field) {
+            try {
+                $type = $this->registry->get($field->type);
+            } catch (OutOfBoundsException) {
                 continue;
             }
-            $identical = new Identical(['token' => $target]);
-            if ($message !== null && $message !== '') {
-                $identical->setMessage($message);
+
+            if ($type->isStatic()) {
+                continue;
             }
-            $inputFilter->get($source)->getValidatorChain()->attach($identical);
+
+            $builder->add($type->buildElement($field));
+            $inputFilter->add($this->buildInput($field));
         }
 
         $csrfElement = $this->buildCsrfElement();
@@ -101,44 +97,21 @@ class FormBuilderService
     }
 
     /**
-     * @param list<array{0: string, 1: string, 2: string|null}> $confirmPairs
+     * @mago-expect analysis:mixed-assignment Validator options are decoded JSON; the target is checked before use.
      */
-    private function buildInput(FieldDefinition $field, array &$confirmPairs): Input
+    private function buildConfirm(ValidatorDefinition $validator): ?Identical
     {
-        $input = new Input($field->name);
-        $input->setRequired($field->required);
-        $input->setAllowEmpty(! $field->required);
-
-        foreach ($field->validators as $validator) {
-            if (! $validator instanceof ValidatorDefinition) {
-                continue;
-            }
-
-            if ($validator->type === ValidatorFactory::TYPE_REQUIRED) {
-                $input->setRequired(true);
-                $input->setAllowEmpty(false);
-                continue;
-            }
-
-            if ($validator->type === ValidatorFactory::TYPE_CONFIRM) {
-                $target = (string) ($validator->options['field'] ?? '');
-                if ($target !== '') {
-                    $confirmPairs[] = [$field->name, $target, $validator->message];
-                }
-                continue;
-            }
-
-            $instance = $this->validatorFactory->create($validator);
-            if ($instance !== null) {
-                $input->getValidatorChain()->attach($instance);
-            }
+        $target = $validator->options['field'] ?? null;
+        if (! is_string($target) || '' === $target) {
+            return null;
         }
 
-        foreach ($field->filters as $filter) {
-            $input->getFilterChain()->attachByName($filter);
+        $identical = new Identical(['token' => $target]);
+        if (null !== $validator->message && '' !== $validator->message) {
+            $identical->setMessage($validator->message);
         }
 
-        return $input;
+        return $identical;
     }
 
     private function buildCsrfElement(): Csrf
@@ -173,6 +146,40 @@ class FormBuilderService
         $input = new Input(self::HONEYPOT_NAME);
         $input->setRequired(false);
         $input->setAllowEmpty(true);
+        return $input;
+    }
+
+    /**
+     * The `confirm` validator becomes an Identical check against the target
+     * field's submitted value; `required` forces the input required.
+     */
+    private function buildInput(FieldDefinition $field): Input
+    {
+        $input = new Input($field->name);
+        $input->setRequired($field->required);
+        $input->setAllowEmpty(! $field->required);
+
+        foreach ($field->validators as $validator) {
+            $instance = match ($validator->type) {
+                ValidatorFactory::TYPE_REQUIRED => null,
+                ValidatorFactory::TYPE_CONFIRM  => $this->buildConfirm($validator),
+                default                         => $this->validatorFactory->create($validator),
+            };
+
+            if (ValidatorFactory::TYPE_REQUIRED === $validator->type) {
+                $input->setRequired(true);
+                $input->setAllowEmpty(false);
+            }
+
+            if (null !== $instance) {
+                $input->getValidatorChain()->attach($instance);
+            }
+        }
+
+        foreach ($field->filters as $filter) {
+            $input->getFilterChain()->attachByName($filter);
+        }
+
         return $input;
     }
 

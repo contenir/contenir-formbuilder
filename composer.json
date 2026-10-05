@@ -3,44 +3,67 @@
     "description": "Framework-agnostic form-builder engine for Contenir CMS — runtime-editable form definitions, builder-form construction, server-side submission validation.",
     "type": "library",
     "license": "MIT",
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../storage",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        }
-    ],
     "require": {
-        "php": "^8.1 || ^8.2 || ^8.3",
+        "php": "~8.3.0 || ~8.4.0 || ~8.5.0",
+        "laminas/laminas-filter": "^2.30",
         "laminas/laminas-form": "^3.20",
         "laminas/laminas-inputfilter": "^2.30",
+        "laminas/laminas-session": "^2.16",
         "laminas/laminas-validator": "^2.50 || ^3.0",
-        "laminas/laminas-filter": "^2.30",
         "psr/log": "^1.0 || ^2.0 || ^3.0"
     },
     "require-dev": {
-        "contenir/storage": "^0.1.0",
-        "phpunit/phpunit": "^11.0",
-        "squizlabs/php_codesniffer": "^3.10"
+        "contenir/storage": "^0.1.0 || ^2.0",
+        "php-db/phpdb-qa-tools": "0.1.x-dev",
+        "phpunit/phpunit": "^11.5.42"
+    },
+    "conflict": {
+        "laminas/laminas-stdlib": "<3.21"
     },
     "suggest": {
         "contenir/storage": "Required for the file field type. Pass a Contenir\\Storage\\StorageManager into FormSubmissionService when uploads need to land on a configured storage profile."
     },
     "autoload": {
-        "psr-4": { "Contenir\\FormBuilder\\": "src/" }
+        "psr-4": {
+            "Contenir\\FormBuilder\\": "src/"
+        }
     },
     "autoload-dev": {
-        "psr-4": { "Contenir\\FormBuilder\\Tests\\": "tests/" }
+        "psr-4": {
+            "Contenir\\FormBuilder\\Tests\\": "tests/"
+        }
     },
     "scripts": {
-        "test": "phpunit",
-        "cs": "phpcs",
-        "cs-fix": "phpcbf"
+        "check": [
+            "@cs-check",
+            "@static-analysis",
+            "@test",
+            "@test-integration"
+        ],
+        "cs-check": [
+            "mago format --check",
+            "mago lint"
+        ],
+        "cs-fix": [
+            "mago format",
+            "mago lint --fix"
+        ],
+        "static-analysis": "mago analyze",
+        "test": "phpunit --colors=always --testsuite unit",
+        "test-integration": "phpunit --colors=always --testsuite integration",
+        "test-coverage": "phpunit --colors=always --coverage-clover clover.xml"
     },
     "config": {
+        "platform": {
+            "php": "8.3.99"
+        },
         "sort-packages": true
-    }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "2.0.x-dev"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

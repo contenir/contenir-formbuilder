@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Contenir\FormBuilder\FieldType;
 
-use Laminas\Form\ElementInterface;
 use Contenir\FormBuilder\Definition\FieldDefinition;
+use Laminas\Form\ElementInterface;
+use Override;
+
+use function trim;
 
 /**
  * Shared element configuration used by every concrete field type.
@@ -16,22 +19,59 @@ use Contenir\FormBuilder\Definition\FieldDefinition;
  * declare any type-specific HTML5 hints. Required-ness for validation is set
  * on the input filter by {@see \Contenir\FormBuilder\Service\FormBuilderService};
  * this class only emits the HTML5 `required` attribute.
+ *
+ * @api
  */
 abstract class AbstractFieldType implements FieldTypeInterface
 {
-    public function isUserSelectable(): bool
+    /**
+     * @mago-expect analysis:mixed-assignment Defaults are scalar or list-shaped per type; Laminas elements accept mixed.
+     */
+    #[Override]
+    public function buildElement(FieldDefinition $field): ElementInterface
     {
-        return true;
+        $element = $this->createElement($field);
+
+        $label = $field->showLabel ? $field->label ?? '' : '';
+        $element->setLabel($label);
+
+        if ($field->required) {
+            $element->setAttribute('required', 'required');
+        }
+
+        if (null !== $field->placeholder && '' !== $field->placeholder) {
+            $element->setAttribute('placeholder', $field->placeholder);
+        }
+
+        $value = $this->valueForDefault($field);
+        if (null !== $value && '' !== $value && [] !== $value) {
+            $element->setValue($value);
+        }
+
+        $existingClass = (string) ($element->getAttribute('class') ?? '');
+        $element->setAttribute('class', trim("formbuilder__control {$existingClass}"));
+
+        $this->applyHtml5Hints($element, $field);
+
+        return $element;
     }
 
+    #[Override]
+    public function icon(): string
+    {
+        return 'cursor-text';
+    }
+
+    #[Override]
     public function isStatic(): bool
     {
         return false;
     }
 
-    public function icon(): string
+    #[Override]
+    public function isUserSelectable(): bool
     {
-        return 'cursor-text';
+        return true;
     }
 
     /**
@@ -41,6 +81,7 @@ abstract class AbstractFieldType implements FieldTypeInterface
      *
      * @return list<string>
      */
+    #[Override]
     public function supportedGroups(): array
     {
         return [
@@ -63,40 +104,20 @@ abstract class AbstractFieldType implements FieldTypeInterface
      *
      * @return list<string>
      */
+    #[Override]
     public function supportedValidators(): array
     {
         return ['string_length', 'regex', 'confirm'];
     }
 
-    public function buildElement(FieldDefinition $field): ElementInterface
-    {
-        $element = $this->createElement($field);
-
-        $label = $field->showLabel ? ($field->label ?? '') : '';
-        $element->setLabel($label);
-
-        if ($field->required) {
-            $element->setAttribute('required', 'required');
-        }
-
-        if ($field->placeholder !== null && $field->placeholder !== '') {
-            $element->setAttribute('placeholder', $field->placeholder);
-        }
-
-        $value = $this->valueForDefault($field);
-        if ($value !== null && $value !== '' && $value !== []) {
-            $element->setValue($value);
-        }
-
-        $existingClass = (string) ($element->getAttribute('class') ?? '');
-        $element->setAttribute('class', trim('formbuilder__control ' . $existingClass));
-
-        $this->applyHtml5Hints($element, $field);
-
-        return $element;
-    }
-
     abstract protected function createElement(FieldDefinition $field): ElementInterface;
+
+    /**
+     * Default no-op; subclasses override to set type-specific HTML5 attributes.
+     *
+     * @mago-expect analysis:unused-parameter The base hook ignores both; overrides use them.
+     */
+    protected function applyHtml5Hints(ElementInterface $element, FieldDefinition $field): void {}
 
     /**
      * Resolve the field's default value into the shape the underlying
@@ -109,12 +130,5 @@ abstract class AbstractFieldType implements FieldTypeInterface
     protected function valueForDefault(FieldDefinition $field): mixed
     {
         return $field->defaultValue;
-    }
-
-    /**
-     * Default no-op; subclasses override to set type-specific HTML5 attributes.
-     */
-    protected function applyHtml5Hints(ElementInterface $element, FieldDefinition $field): void
-    {
     }
 }

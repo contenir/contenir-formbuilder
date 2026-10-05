@@ -4,32 +4,41 @@ declare(strict_types=1);
 
 namespace Contenir\FormBuilder\FieldType;
 
+use Contenir\FormBuilder\Definition\FieldDefinition;
 use Laminas\Form\Element\Hidden;
 use Laminas\Form\ElementInterface;
-use Contenir\FormBuilder\Definition\FieldDefinition;
+use Override;
 
-class HiddenField extends AbstractFieldType
+/**
+ * @api
+ */
+final class HiddenField extends AbstractFieldType
 {
-    public function key(): string
-    {
-        return 'hidden';
-    }
-
-    public function label(): string
-    {
-        return 'Hidden';
-    }
-
+    #[Override]
     public function icon(): string
     {
         return 'eye-off';
     }
 
+    #[Override]
+    public function key(): string
+    {
+        return 'hidden';
+    }
+
+    #[Override]
+    public function label(): string
+    {
+        return 'Hidden';
+    }
+
+    #[Override]
     public function supportedGroups(): array
     {
         return ['label', 'default', 'conditional'];
     }
 
+    #[Override]
     protected function createElement(FieldDefinition $field): ElementInterface
     {
         return new Hidden($field->name);

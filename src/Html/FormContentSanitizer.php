@@ -6,7 +6,22 @@ namespace Contenir\FormBuilder\Html;
 
 use DOMDocument;
 use DOMElement;
-use DOMNode;
+
+use function array_reverse;
+use function explode;
+use function in_array;
+use function iterator_to_array;
+use function libxml_clear_errors;
+use function libxml_use_internal_errors;
+use function preg_match;
+use function preg_replace;
+use function strlen;
+use function strtolower;
+use function substr;
+use function trim;
+
+use const LIBXML_HTML_NODEFDTD;
+use const LIBXML_HTML_NOIMPLIED;
 
 /**
  * Sanitizer for form-builder content blocks.
@@ -27,129 +42,95 @@ use DOMNode;
  * (matches InlineHtmlSanitizer's unwrap-on-strip behaviour).
  * scripts / styles / iframes / forms / event handlers (on*) /
  * javascript: URLs are stripped entirely.
+ *
+ * @api
  */
 final class FormContentSanitizer
 {
-    private const ALLOWED_TAGS = [
+    private const array ALLOWED_TAGS = [
         // Block
-        'p', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'blockquote',
+        'p',
+        'h2',
+        'h3',
+        'h4',
+        'ul',
+        'ol',
+        'li',
+        'blockquote',
         // Inline
-        'a', 'strong', 'em', 'b', 'i', 'br', 'code', 'span', 'small', 'sub', 'sup',
+        'a',
+        'strong',
+        'em',
+        'b',
+        'i',
+        'br',
+        'code',
+        'span',
+        'small',
+        'sub',
+        'sup',
     ];
 
-    private const ALLOWED_ATTRS_BY_TAG = [
+    /** @var array<string, list<string>> */
+    private const array ALLOWED_ATTRS_BY_TAG = [
         'a' => ['href', 'title', 'rel', 'target'],
     ];
 
-    private const ALLOWED_ATTRS_ANY = ['class'];
+    /** @var list<string> */
+    private const array ALLOWED_ATTRS_ANY = ['class'];
 
-    private const SAFE_HREF_SCHEMES = ['http', 'https', 'mailto', 'tel'];
+    private const array SAFE_HREF_SCHEMES = ['http', 'https', 'mailto', 'tel'];
 
+    /** Elements removed together with their content. */
+    private const array REMOVED_TAGS = ['script', 'style', 'iframe', 'form'];
+
+    private const string ROOT_OPEN = '<div id="__root__">';
+
+    private const string ROOT_CLOSE = '</div>';
+
+    /**
+     * Elements are visited in reverse document order, so every descendant is
+     * cleaned before the ancestor that may unwrap or remove it.
+     */
     public static function sanitize(string $html): string
     {
-        if (trim($html) === '') {
-            return '';
-        }
-
         $doc                     = new DOMDocument('1.0', 'UTF-8');
         $doc->formatOutput       = false;
         $doc->preserveWhiteSpace = true;
 
-        $previousState = libxml_use_internal_errors(true);
+        $previousState = libxml_use_internal_errors(use_errors: true);
         $doc->loadHTML(
-            '<?xml encoding="UTF-8"><div id="__root__">' . $html . '</div>',
-            \LIBXML_HTML_NOIMPLIED | \LIBXML_HTML_NODEFDTD,
+            '<?xml encoding="UTF-8">' . self::ROOT_OPEN . $html . self::ROOT_CLOSE,
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD,
         );
         libxml_clear_errors();
         libxml_use_internal_errors($previousState);
 
         $root = $doc->getElementById('__root__');
         if (! $root instanceof DOMElement) {
-            return '';
+            // The parser always keeps the wrapper it was given, so the lookup cannot miss.
+            return ''; // @codeCoverageIgnore
         }
 
-        self::walk($root);
-
-        $output = '';
-        foreach ($root->childNodes as $child) {
-            $output .= $doc->saveHTML($child);
+        $elements = iterator_to_array($root->getElementsByTagName('*'));
+        foreach (array_reverse($elements) as $element) {
+            self::sanitizeElement($element);
         }
 
-        return trim($output);
+        $output = (string) $doc->saveHTML($root);
+
+        return trim(substr($output, strlen(self::ROOT_OPEN), -strlen(self::ROOT_CLOSE)));
     }
 
-    private static function walk(DOMNode $node): void
-    {
-        $children = [];
-        foreach ($node->childNodes as $child) {
-            $children[] = $child;
-        }
-
-        foreach ($children as $child) {
-            if (! $child instanceof DOMElement) {
-                continue;
-            }
-
-            self::walk($child);
-
-            $tag = strtolower($child->tagName);
-
-            if ($tag === 'script' || $tag === 'style' || $tag === 'iframe' || $tag === 'form') {
-                $child->parentNode?->removeChild($child);
-                continue;
-            }
-
-            if (! in_array($tag, self::ALLOWED_TAGS, true)) {
-                self::unwrap($child);
-                continue;
-            }
-
-            self::stripDisallowedAttributes($child, $tag);
-        }
-    }
-
-    private static function unwrap(DOMElement $element): void
-    {
-        $parent = $element->parentNode;
-        if ($parent === null) {
-            return;
-        }
-
-        while ($element->firstChild !== null) {
-            $parent->insertBefore($element->firstChild, $element);
-        }
-        $parent->removeChild($element);
-    }
-
-    private static function stripDisallowedAttributes(DOMElement $element, string $tag): void
-    {
-        $allowed = array_merge(
-            self::ALLOWED_ATTRS_ANY,
-            self::ALLOWED_ATTRS_BY_TAG[$tag] ?? [],
-        );
-
-        $names = [];
-        foreach ($element->attributes as $attr) {
-            $names[] = $attr->nodeName;
-        }
-
-        foreach ($names as $name) {
-            $lower = strtolower($name);
-            if (! in_array($lower, $allowed, true)) {
-                $element->removeAttribute($name);
-                continue;
-            }
-
-            if ($lower === 'href' && ! self::isSafeHref((string) $element->getAttribute('href'))) {
-                $element->removeAttribute($name);
-            }
-        }
-    }
-
+    /**
+     * Browsers ignore ASCII tab and newline anywhere in a URL and strip
+     * leading C0 controls and spaces, so `java&#9;script:` still runs as
+     * `javascript:`. They are removed before the scheme is checked.
+     */
     private static function isSafeHref(string $value): bool
     {
-        $value = trim($value);
-        if ($value === '') {
+        $value = (string) preg_replace('/[\x00-\x20]+/', replacement: '', subject: $value);
+        if ('' === $value) {
             return false;
         }
 
@@ -157,7 +138,55 @@ final class FormContentSanitizer
             return true;
         }
 
-        $scheme = strtolower(substr($value, 0, (int) strpos($value, ':')));
-        return in_array($scheme, self::SAFE_HREF_SCHEMES, true);
+        $scheme = strtolower(explode(':', $value, limit: 2)[0]);
+
+        return in_array($scheme, self::SAFE_HREF_SCHEMES, strict: true);
+    }
+
+    private static function sanitizeElement(DOMElement $element): void
+    {
+        $tag = strtolower($element->tagName);
+        if (in_array($tag, self::REMOVED_TAGS, strict: true)) {
+            $element->parentNode?->removeChild($element);
+            return;
+        }
+
+        if (! in_array($tag, self::ALLOWED_TAGS, strict: true)) {
+            self::unwrap($element);
+            return;
+        }
+
+        self::stripDisallowedAttributes($element, $tag);
+    }
+
+    private static function stripDisallowedAttributes(DOMElement $element, string $tag): void
+    {
+        $allowed = [
+            ...self::ALLOWED_ATTRS_ANY,
+            ...(self::ALLOWED_ATTRS_BY_TAG[$tag] ?? []),
+        ];
+
+        /** @var list<string> $names */
+        $names = $element->getAttributeNames();
+        foreach ($names as $name) {
+            $lower = strtolower($name);
+            if (! in_array($lower, $allowed, strict: true)) {
+                $element->removeAttribute($name);
+                continue;
+            }
+
+            if ('href' === $lower && ! self::isSafeHref($element->getAttribute($name))) {
+                $element->removeAttribute($name);
+            }
+        }
+    }
+
+    private static function unwrap(DOMElement $element): void
+    {
+        while (null !== $element->firstChild) {
+            $element->before($element->firstChild);
+        }
+
+        $element->remove();
     }
 }
