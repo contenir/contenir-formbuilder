@@ -12,7 +12,7 @@ package's classes or rely on the behaviours that were fixed.
 | contenir/storage (optional) | ^0.1 | ^0.1 or ^2.0 |
 
 ```bash
-composer require contenir/formbuilder:^2.0
+composer require contenir/contenir-formbuilder:^2.0
 ```
 
 Projects that must stay on PHP 8.1 or 8.2 can keep using `^0.1`, which is
@@ -141,3 +141,17 @@ FormContentSanitizer::sanitize('<a href="java&#9;script:alert(1)">x</a>');
   string, so `'false'` now means false.
 - `WebhookRegistrar` skips a submission only when the registry's `spam` value
   is `true`; 0.x treated any truthy value as spam.
+
+## Package renamed in 2.2
+
+From 2.2, the package is published as `contenir/contenir-formbuilder`. It
+declares `replace` for `contenir/formbuilder`, so the two can never be
+installed together. Switch the requirement:
+
+```bash
+composer remove contenir/formbuilder && composer require contenir/contenir-formbuilder:^2.2
+```
+
+If you use the `file` field type, the storage package has been renamed too:
+`contenir/contenir-storage` replaces `contenir/storage`. No code changes are
+needed: namespaces and classes are unchanged.
