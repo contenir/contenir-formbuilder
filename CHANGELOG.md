@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.2.0] - Unreleased
 
 ### Added
 
@@ -12,6 +12,13 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Renamed from `contenir/formbuilder` to `contenir/contenir-formbuilder`. The
+  package declares `replace` for the old name; require
+  `contenir/contenir-formbuilder` instead. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
+- The `file` field type's suggested storage package is now
+  `contenir/contenir-storage`, the renamed `contenir/storage`, and the
+  development requirement is `contenir/contenir-storage` `^2.2`. Namespaces
+  are unchanged, so a `StorageManager` from `contenir/storage` still works.
 - `FormBuilderService` no longer declares its own input for the CSRF element.
   The input it added was dead code: `Csrf` is an input provider, and Laminas
   Form already adds the element's required, token-checked input to the

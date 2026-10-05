@@ -9,6 +9,7 @@ use Contenir\FormBuilder\FieldType\FieldTypeRegistry;
 use Contenir\FormBuilder\Service\FormBuilderService;
 use Contenir\FormBuilder\Service\FormSubmissionService;
 use Contenir\FormBuilder\Tests\TestAsset\Factory\FormDefinitionFactory as F;
+use Contenir\FormBuilder\Tests\TestAsset\Storage\RecordingUploadResolver;
 use Contenir\FormBuilder\Tests\Trait\InMemorySessionTrait;
 use Contenir\FormBuilder\Tests\Trait\TemporaryDirectoryTrait;
 use Contenir\FormBuilder\Validator\ValidatorFactory;
@@ -20,6 +21,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
+use function array_map;
 use function file_put_contents;
 use function is_file;
 
@@ -40,6 +42,19 @@ final class FileUploadTest extends TestCase
     private StorageManager $manager;
 
     private string $upload;
+
+    /**
+     * @return array<string, array{mixed, ?string}>
+     */
+    public static function clientTypeProvider(): array
+    {
+        return [
+            'client type'     => ['application/pdf', 'application/pdf'],
+            'empty type'      => ['', null],
+            'missing type'    => [null, null],
+            'non-string type' => [['application/pdf'], null],
+        ];
+    }
 
     /**
      * @return array<string, array{array<string, mixed>}>
@@ -64,6 +79,21 @@ final class FileUploadTest extends TestCase
             'non-string temp path' => [['tmp_name' => ['x']]],
             'not an uploaded file' => [['tmp_name' => '/nonexistent/upload']],
         ];
+    }
+
+    #[Test]
+    #[DataProvider('clientTypeProvider')]
+    public function clientTypeIsPassedToStorageOnlyWhenItIsANonEmptyString(mixed $type, ?string $expected): void
+    {
+        $resolver = new RecordingUploadResolver();
+        $manager  = new StorageManager();
+        $manager->register(StorageManager::DEFAULT_PROFILE, new InMemoryStorage(resolver: $resolver));
+        $form    = $this->uploadForm();
+        $service = $this->acceptingService($manager);
+
+        $service->submit($form, $this->post($form), ['cv' => $this->file(['type' => $type])]);
+
+        static::assertSame([$expected], array_map(static fn($upload) => $upload->clientMime, $resolver->uploads));
     }
 
     #[Test]

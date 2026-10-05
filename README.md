@@ -1,7 +1,9 @@
-# contenir/formbuilder
+# contenir/contenir-formbuilder
 
-[![Continuous Integration](https://github.com/contenir/formbuilder/actions/workflows/continuous-integration.yml/badge.svg)](https://github.com/contenir/formbuilder/actions/workflows/continuous-integration.yml)
-[![codecov](https://codecov.io/gh/contenir/formbuilder/graph/badge.svg)](https://codecov.io/gh/contenir/formbuilder)
+Formerly `contenir/formbuilder`; the old package is abandoned in favour of this one.
+
+[![Continuous Integration](https://github.com/contenir/contenir-formbuilder/actions/workflows/continuous-integration.yml/badge.svg)](https://github.com/contenir/contenir-formbuilder/actions/workflows/continuous-integration.yml)
+[![codecov](https://codecov.io/gh/contenir/contenir-formbuilder/graph/badge.svg)](https://codecov.io/gh/contenir/contenir-formbuilder)
 
 Framework-agnostic form-builder engine for [Contenir CMS](https://github.com/contenir).
 
@@ -16,14 +18,14 @@ validates submissions against it, and renders the markup:
 - **Conditional logic.** Show/hide rules evaluated on the server (and
   mirrored by the client).
 - **Submission.** CSRF, a honeypot spam trap, conditional gating, optional
-  file uploads through [`contenir/storage`](https://github.com/contenir/storage),
+  file uploads through [`contenir/contenir-storage`](https://github.com/contenir/contenir-storage),
   and observers (registrars) that persist or forward the result.
 - **Rendering.** Framework-free HTML for single-page or stepped forms.
 - **Merge tags.** `{field:name}`, `{form:title}`, `{entry:fields}` and custom
   namespaces for notification templates and redirect URLs.
 
 This is the pure-PHP core. It has no opinion about how definitions are loaded
-or how submissions are stored. [`contenir/formbuilder-laminas-mvc`](https://github.com/contenir/formbuilder-laminas-mvc)
+or how submissions are stored. [`contenir/contenir-formbuilder-laminas-mvc`](https://github.com/contenir/contenir-formbuilder-laminas-mvc)
 wires it into a laminas-mvc application.
 
 ## Requirements
@@ -32,12 +34,12 @@ wires it into a laminas-mvc application.
 - laminas-form 3.20+, laminas-inputfilter, laminas-validator, laminas-filter
 - laminas-session (backs the CSRF token)
 - `ext-curl` for webhooks
-- Optional: `contenir/storage` for the `file` field type
+- Optional: `contenir/contenir-storage` for the `file` field type
 
 ## Installation
 
 ```bash
-composer require contenir/formbuilder
+composer require contenir/contenir-formbuilder
 ```
 
 The 0.x releases, which support PHP 8.1, remain available from the `0.x`
