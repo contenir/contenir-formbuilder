@@ -15,7 +15,7 @@ constants, and several behaviour fixes. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
 - Requires PHP 8.3, 8.4 or 8.5. PHP 8.1 and 8.2 are no longer supported.
 - `laminas/laminas-session` is now a dependency. The CSRF element every built
   form carries cannot generate or check its token without it.
-- Conflicts with `laminas/laminas-stdlib` below 3.19, which raises
+- Conflicts with `laminas/laminas-stdlib` below 3.21, which raises
   deprecations on PHP 8.4 and 8.5.
 - Class constants are typed (`FormDefinition`, `FormBuilderService`,
   `ValidatorFactory`, `RuleEvaluator`).
