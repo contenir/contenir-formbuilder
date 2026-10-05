@@ -29,6 +29,8 @@ constants, and several behaviour fixes. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
   validation group only; it no longer mutates their inputs. Observers are
   notified only when the builder returns a `BuilderForm`.
 - `ValidatorDefinition::fromArray()` coerces decoded JSON instead of casting.
+- The MIT licence's copyright holder is now Contenir, and the text restores
+  the missing "USE OR OTHER" wording.
 
 ### Added
 
