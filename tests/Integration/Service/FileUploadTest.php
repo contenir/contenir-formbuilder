@@ -63,7 +63,12 @@ final class FileUploadTest extends TestCase
 
         $result = $service->submit($form, $this->post($form), ['cv' => $this->file(['name' => null, 'type' => ''])]);
 
-        static::assertSame('forms/contact/upload', $result->values['cv']);
+        /**
+         * The base name is FormBuilder's default; whether an extension is
+         * appended for the detected type is up to the storage backend
+         * (contenir/storage 0.x leaves it off, 2.x adds it).
+         */
+        static::assertMatchesRegularExpression('#^forms/contact/upload(\\.[a-z0-9]+)?$#', $result->values['cv']);
     }
 
     #[Test]
