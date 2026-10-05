@@ -57,7 +57,9 @@
                 "Contenir\\FormBuilder\\Conditional\\ConditionalRulesParser::parse::61",
                 "Contenir\\FormBuilder\\Conditional\\ConditionalRulesParser::normaliseRow::87",
                 // Stripping attributes from an element that was just unwrapped (detached) has no effect.
-                "Contenir\\FormBuilder\\Html\\FormContentSanitizer::sanitizeElement::156"
+                "Contenir\\FormBuilder\\Html\\FormContentSanitizer::sanitizeElement::156",
+                // preg_replace_callback() on an empty template returns '' as well.
+                "Contenir\\FormBuilder\\Service\\TokenReplacer::dispatch::185"
             ]
         },
         "LogicalOr": {
@@ -78,6 +80,8 @@
                 "\\$attribs\\['name'\\] = \\(string\\) \\$element->getName\\(\\);",
                 "\\? \\(string\\) \\$value",
                 ": \\(string\\) \\$element->getLabel\\(\\);",
+                // implode() casts each scalar to string the same way.
+                "\\$strings\\[\\] = \\(string\\) \\$value;",
                 // The value is interpolated into a string on the next line, which casts it the same way.
                 "\\$existingClass = \\(string\\) \\(\\$element->getAttribute\\('class'\\) \\?\\? ''\\);"
             ]

@@ -160,10 +160,8 @@ final class FileUploadTest extends TestCase
     #[Test]
     public function surroundingSlashesInTheSlugAreTrimmed(): void
     {
-        $form    = new FormDefinition(1, '/contact/', 'Contact', sections: [F::section('main', [F::field(
-            'file',
-            'cv',
-        )])]);
+        $section = F::section('main', [F::field('file', 'cv')]);
+        $form    = new FormDefinition(1, '/contact/', 'Contact', sections: [$section]);
         $service = $this->acceptingService($this->manager);
 
         $result = $service->submit($form, $this->post($form), ['cv' => $this->file()]);
