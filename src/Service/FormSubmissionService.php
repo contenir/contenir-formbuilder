@@ -17,8 +17,8 @@ use Laminas\Form\FormInterface;
 use SplObserver;
 
 use function array_diff;
+use function array_key_exists;
 use function array_keys;
-use function array_values;
 use function is_array;
 use function is_int;
 use function is_string;
@@ -169,8 +169,7 @@ final class FormSubmissionService
         }
 
         if ([] !== $hidden) {
-            $allNames = array_keys($built->getElements());
-            $built->setValidationGroup(array_values(array_diff($allNames, $hidden)));
+            $built->setValidationGroup($this->validationGroup($built, $hidden));
         }
 
         return $hidden;
@@ -328,6 +327,34 @@ final class FormSubmissionService
     private function updateEntryRegistry(BuilderForm $form, array $context, string $date): void
     {
         $form->registry?->offsetSet('entry', $this->buildEntryAttributes($form, $context, $date));
+    }
+
+    /**
+     * The visible element names, in form order, keyed so Laminas reads each
+     * entry as a name. Laminas treats a group key that matches an element as
+     * that element's nested fieldset group, so a plain list breaks once a
+     * field is named "0", "1", and so on: such indexes are skipped. Without
+     * integer-like names the group is the plain list.
+     *
+     * @param list<string> $hidden
+     *
+     * @return array<int, int|string>
+     */
+    private function validationGroup(FormInterface $built, array $hidden): array
+    {
+        $elements = $built->getElements();
+        $group    = [];
+        $key      = 0;
+        foreach (array_diff(array_keys($elements), $hidden) as $name) {
+            while (array_key_exists($key, $elements)) {
+                ++$key;
+            }
+
+            $group[$key] = $name;
+            ++$key;
+        }
+
+        return $group;
     }
 
     /**

@@ -19,6 +19,11 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
+use function array_keys;
+use function array_map;
+use function range;
+use function strval;
+
 #[Group('integration')]
 #[Group('service')]
 final class FormSubmissionServiceTest extends TestCase
@@ -26,6 +31,19 @@ final class FormSubmissionServiceTest extends TestCase
     use InMemorySessionTrait;
 
     private FormBuilderService $builder;
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function fieldNameProvider(): array
+    {
+        return [
+            'zero'        => ['0'],
+            'one'         => ['1'],
+            'ten'         => ['10'],
+            'normal name' => ['phone'],
+        ];
+    }
 
     /**
      * @return array<string, array{mixed}>
@@ -36,6 +54,20 @@ final class FormSubmissionServiceTest extends TestCase
             'filled honeypot'     => ['https://spam.example'],
             'non-string honeypot' => [['x']],
         ];
+    }
+
+    #[Test]
+    #[DataProvider('fieldNameProvider')]
+    public function acceptsAFilledFieldWhileAnotherFieldIsHidden(string $name): void
+    {
+        $form = $this->formWithHiddenField($name);
+
+        $result = (new FormSubmissionService($this->builder))->submit($form, $this->post($form, [$name => 'x']));
+
+        static::assertSame([], $result->errors);
+        static::assertTrue($result->valid);
+        static::assertSame('x', $result->values[$name]);
+        static::assertArrayNotHasKey('extra', $result->values);
     }
 
     #[Test]
@@ -176,6 +208,39 @@ final class FormSubmissionServiceTest extends TestCase
     }
 
     #[Test]
+    #[DataProvider('fieldNameProvider')]
+    public function validatesTheFieldWhileAnotherFieldIsHidden(string $name): void
+    {
+        $form = $this->formWithHiddenField($name);
+
+        $result = (new FormSubmissionService($this->builder))->submit($form, $this->post($form, [$name => '']));
+
+        static::assertSame([$name], array_map(strval(...), array_keys($result->errors)));
+    }
+
+    #[Test]
+    public function validationGroupIsThePlainListOfVisibleNames(): void
+    {
+        $form = $this->formWithHiddenField('phone');
+
+        $result = (new FormSubmissionService($this->builder))->submit($form, $this->post($form, ['phone' => 'x']));
+
+        static::assertSame(
+            [
+                'phone',
+                ...array_map(static fn(int $index): string => "optional_{$index}", range(
+                    start: 1,
+                    end: 11,
+                )),
+                FormBuilderService::CSRF_NAME,
+                FormBuilderService::HONEYPOT_NAME,
+                '_submit',
+            ],
+            $result->form->getValidationGroup(),
+        );
+    }
+
+    #[Test]
     public function validSpamSubmissionUsesTheValidatedValues(): void
     {
         $form   = $this->contactForm();
@@ -236,6 +301,29 @@ final class FormSubmissionServiceTest extends TestCase
     }
 
     /**
+     * A required field named $name, a conditional field that stays hidden and
+     * enough optional fields that a list of the visible names has an index
+     * equal to any of the integer-like names under test.
+     */
+    private function formWithHiddenField(string $name): FormDefinition
+    {
+        $fields = [
+            F::field('text', 'extra', required: true, conditional: [
+                'show_when' => ['all' => [['field' => 'mode', 'op' => 'equals', 'value' => 'never']]],
+            ]),
+            F::field('text', $name, required: true),
+        ];
+        foreach (range(
+            start: 1,
+            end: 11,
+        ) as $index) {
+            $fields[] = F::field('text', "optional_{$index}");
+        }
+
+        return F::form($fields);
+    }
+
+    /**
      * @param array<string, mixed> $values
      *
      * @return array<string, mixed>
@@ -244,6 +332,9 @@ final class FormSubmissionServiceTest extends TestCase
     {
         $csrf = $this->builder->build($form)->get(FormBuilderService::CSRF_NAME)->getValue();
 
-        return [...$values, FormBuilderService::CSRF_NAME => $csrf, '_submit' => 'Send'];
+        $values[FormBuilderService::CSRF_NAME] = $csrf;
+        $values['_submit']                     = 'Send';
+
+        return $values;
     }
 }
