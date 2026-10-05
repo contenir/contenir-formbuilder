@@ -22,6 +22,18 @@ adheres to [Semantic Versioning](https://semver.org/).
   parser lower-cases them), the reverse visiting order and an `explode()`
   limit. The allow-list and its output are unchanged.
 
+## [2.1.1] - Unreleased
+
+### Fixed
+
+- `FormSubmissionService::submit()` no longer throws a `TypeError` from
+  `isValid()` when a field is named with an integer-like string (`"0"`,
+  `"1"`, `"10"`, …) and a conditional rule hides another field. Laminas reads
+  a validation-group key that matches an element name as a nested fieldset
+  group, and the group was a plain list whose indexes could match such names.
+  The group now skips those indexes; for other names it is the same list as
+  before.
+
 ## [2.1.0] - Unreleased
 
 ### Security
