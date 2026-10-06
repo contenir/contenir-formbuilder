@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## [2.2.0] - Unreleased
+## [2.2.0] - 2026-10-05
 
 ### Added
 
@@ -29,7 +29,7 @@ adheres to [Semantic Versioning](https://semver.org/).
   parser lower-cases them), the reverse visiting order and an `explode()`
   limit. The allow-list and its output are unchanged.
 
-## [2.1.1] - Unreleased
+## [2.1.1] - 2026-10-05
 
 ### Fixed
 
@@ -41,7 +41,7 @@ adheres to [Semantic Versioning](https://semver.org/).
   The group now skips those indexes; for other names it is the same list as
   before.
 
-## [2.1.0] - Unreleased
+## [2.1.0] - 2026-10-05
 
 ### Security
 
