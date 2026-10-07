@@ -4,44 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## [2.2.0] - 2026-10-05
+## [2.0.0-RC1] - Unreleased
 
-### Added
+The first 2.0 pre-release. The public API keeps its shape. The major version
+marks the move to PHP 8.3+ and the QA toolchain shared by all Contenir 2.x
+packages, the package rename, typed class constants, and several security and
+behaviour fixes. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
 
-- Infection mutation testing in CI, MSI 100%.
-
-### Changed
-
-- Renamed from `contenir/formbuilder` to `contenir/contenir-formbuilder`. The
-  package declares `replace` for the old name; require
-  `contenir/contenir-formbuilder` instead. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
-- The `file` field type's suggested storage package is now
-  `contenir/contenir-storage`, the renamed `contenir/storage`, and the
-  development requirement is `contenir/contenir-storage` `^2.2`. Namespaces
-  are unchanged, so a `StorageManager` from `contenir/storage` still works.
-- `FormBuilderService` no longer declares its own input for the CSRF element.
-  The input it added was dead code: `Csrf` is an input provider, and Laminas
-  Form already adds the element's required, token-checked input to the
-  filter. Submissions without the issued token are still rejected.
-- `FormContentSanitizer` drops code that never changed its output:
-  `preserveWhiteSpace` (ignored by libxml's HTML parser), the closing wrapper
-  tag (the parser closes it), `strtolower()` on tag and attribute names (the
-  parser lower-cases them), the reverse visiting order and an `explode()`
-  limit. The allow-list and its output are unchanged.
-
-## [2.1.1] - 2026-10-05
-
-### Fixed
-
-- `FormSubmissionService::submit()` no longer throws a `TypeError` from
-  `isValid()` when a field is named with an integer-like string (`"0"`,
-  `"1"`, `"10"`, …) and a conditional rule hides another field. Laminas reads
-  a validation-group key that matches an element name as a nested fieldset
-  group, and the group was a plain list whose indexes could match such names.
-  The group now skips those indexes; for other names it is the same list as
-  before.
-
-## [2.1.0] - 2026-10-05
+The 2.0.0, 2.1.0, 2.1.1 and 2.2.0 tags published on 2026-10-05 were withdrawn
+and are folded into this release.
 
 ### Security
 
@@ -49,16 +20,22 @@ adheres to [Semantic Versioning](https://semver.org/).
   merge-tag value (`{entry:fields}` excepted, as it is already escaped). Use it
   for any template rendered as HTML: `replace()` inserts submitted values
   as-is, so an HTML notification body built with it let a visitor inject
-  markup. contenir/formbuilder-laminas-mvc 2.1 uses it for HTML email bodies.
+  markup. contenir/contenir-formbuilder-laminas-mvc uses it for HTML email
+  bodies.
+- `FormContentSanitizer` let `javascript:` links through when the scheme
+  contained a tab, newline or leading control character (`java&#9;script:`).
 
-## [2.0.0] - 2026-10-05
-
-The public API keeps its shape. The major version marks the move to PHP 8.3+
-and the php-db QA toolchain shared by all Contenir 2.x packages, typed class
-constants, and several behaviour fixes. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
+0.1.5 backports both fixes for projects that stay on 0.1.
 
 ### Changed
 
+- Renamed from `contenir/formbuilder` to `contenir/contenir-formbuilder`. The
+  package declares `replace` for the old name; require
+  `contenir/contenir-formbuilder` instead.
+- The `file` field type's suggested storage package is now
+  `contenir/contenir-storage`, the renamed `contenir/storage`, and the
+  development requirement is `contenir/contenir-storage` `^2.2`. Namespaces
+  are unchanged, so a `StorageManager` from `contenir/storage` still works.
 - Requires PHP 8.3, 8.4 or 8.5. PHP 8.1 and 8.2 are no longer supported.
 - Every concrete class is `final`. Customise through `FieldTypeInterface` /
   `AbstractFieldType`, the new `FormBuilderInterface`, and the existing
@@ -75,9 +52,18 @@ constants, and several behaviour fixes. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
   accepts `['value' => …, 'label' => …]` option specs.
 - `FormBuilderService` attaches the `confirm` (Identical) validator in the
   field's validator order instead of after all fields.
+- `FormBuilderService` no longer declares its own input for the CSRF element.
+  The input it added was dead code: `Csrf` is an input provider, and Laminas
+  Form already adds the element's required, token-checked input to the
+  filter. Submissions without the issued token are still rejected.
 - `FormSubmissionService` excludes hidden conditional fields through the
   validation group only; it no longer mutates their inputs. Observers are
   notified only when the builder returns a `BuilderForm`.
+- `FormContentSanitizer` drops code that never changed its output:
+  `preserveWhiteSpace` (ignored by libxml's HTML parser), the closing wrapper
+  tag (the parser closes it), `strtolower()` on tag and attribute names (the
+  parser lower-cases them), the reverse visiting order and an `explode()`
+  limit. The allow-list and its output are unchanged.
 - `ValidatorDefinition::fromArray()` coerces decoded JSON instead of casting.
 - The MIT licence's copyright holder is now Contenir, and the text restores
   the missing "USE OR OTHER" wording.
@@ -90,14 +76,20 @@ constants, and several behaviour fixes. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
   `Closure(string): bool` that decides whether a path is an HTTP upload
   (default `is_uploaded_file()`).
 - Continuous integration on PHP 8.3, 8.4 and 8.5 against lowest, locked and
-  latest dependencies, with coverage reported to Codecov.
+  latest dependencies, with coverage reported to Codecov and Infection
+  mutation testing at MSI 100%.
 - Separate unit and integration test suites with 100% line and branch
   coverage, and a `docs/` folder covering the public API.
 
 ### Fixed
 
-- `FormContentSanitizer` let `javascript:` links through when the scheme
-  contained a tab, newline or leading control character (`java&#9;script:`).
+- `FormSubmissionService::submit()` no longer throws a `TypeError` from
+  `isValid()` when a field is named with an integer-like string (`"0"`,
+  `"1"`, `"10"`, …) and a conditional rule hides another field. Laminas reads
+  a validation-group key that matches an element name as a nested fieldset
+  group, and the group was a plain list whose indexes could match such names.
+  The group now skips those indexes; for other names it is the same list as
+  before.
 - `WebhookRegistrar` no longer calls `curl_close()`, deprecated in PHP 8.5.
 - `{entry:fields}` no longer lists `content` blocks as empty rows.
 - A non-numeric textarea `rows` option rendered `rows="0"`; it now uses 5.
@@ -111,7 +103,7 @@ constants, and several behaviour fixes. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
 ### Removed
 
 - `squizlabs/php_codesniffer`, `phpcs.xml` and `phpunit.xml`, replaced by Mago
-  via `php-db/phpdb-qa-tools` and `phpunit.xml.dist`.
+  via contenir-qa-tools and `phpunit.xml.dist`.
 
 ## [0.1.4] - 2026-05-10
 
