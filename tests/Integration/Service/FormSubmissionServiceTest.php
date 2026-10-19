@@ -9,10 +9,12 @@ use Contenir\FormBuilder\Definition\ValidatorDefinition;
 use Contenir\FormBuilder\FieldType\FieldTypeRegistry;
 use Contenir\FormBuilder\Service\FormBuilderService;
 use Contenir\FormBuilder\Service\FormSubmissionService;
+use Contenir\FormBuilder\Tests\TestAsset\Clock\FrozenClock;
 use Contenir\FormBuilder\Tests\TestAsset\Factory\FormDefinitionFactory as F;
 use Contenir\FormBuilder\Tests\TestAsset\Observer\RecordingObserver;
 use Contenir\FormBuilder\Tests\Trait\InMemorySessionTrait;
 use Contenir\FormBuilder\Validator\ValidatorFactory;
+use DateTimeImmutable;
 use Override;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -84,6 +86,20 @@ final class FormSubmissionServiceTest extends TestCase
         );
 
         static::assertArrayHasKey('email_again', $result->errors);
+    }
+
+    #[Test]
+    public function entryDateComesFromTheClock(): void
+    {
+        $form     = $this->contactForm();
+        $observer = new RecordingObserver();
+        $clock    = new FrozenClock(new DateTimeImmutable('2026-10-19 09:30:15'));
+        $service  = new FormSubmissionService($this->builder, clock: $clock);
+        $service->attach($observer);
+
+        $service->submit($form, $this->post($form, ['name' => 'Ann']));
+
+        static::assertSame('2026-10-19 09:30:15', $observer->registries[0]['entry']['date']);
     }
 
     #[Test]

@@ -14,6 +14,7 @@ use Laminas\Form\Element\Submit;
 use Laminas\Form\Element\Text;
 use Laminas\Form\Exception\ExceptionInterface as FormException;
 use Laminas\Form\FormInterface;
+use Laminas\InputFilter\FileInput;
 use Laminas\InputFilter\Input;
 use Laminas\InputFilter\InputFilter;
 use Laminas\Validator\Identical;
@@ -126,6 +127,21 @@ final class FormBuilderService implements FormBuilderInterface
         ]);
     }
 
+    /**
+     * A file field's input checks the upload against the field's size, extension
+     * and MIME type settings. Laminas' own is_uploaded_file() check is turned
+     * off: {@see FormSubmissionService} has already made that check (through
+     * its replaceable closure) before the upload reaches the form.
+     */
+    private function buildFileInput(FieldDefinition $field): FileInput
+    {
+        $input = new FileInput($field->name);
+        $input->setAutoPrependUploadValidator(false);
+        $input->getValidatorChain()->attach($this->validatorFactory->fileUpload($field->options));
+
+        return $input;
+    }
+
     private function buildHoneypotElement(): Text
     {
         $element = new Text(self::HONEYPOT_NAME);
@@ -150,7 +166,7 @@ final class FormBuilderService implements FormBuilderInterface
      */
     private function buildInput(FieldDefinition $field): Input
     {
-        $input = new Input($field->name);
+        $input = 'file' === $field->type ? $this->buildFileInput($field) : new Input($field->name);
         $input->setRequired($field->required);
         $input->setAllowEmpty(! $field->required);
 

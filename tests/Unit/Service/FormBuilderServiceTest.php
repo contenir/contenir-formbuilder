@@ -9,11 +9,13 @@ use Contenir\FormBuilder\FieldType\FieldTypeRegistry;
 use Contenir\FormBuilder\Service\BuilderForm;
 use Contenir\FormBuilder\Service\FormBuilderService;
 use Contenir\FormBuilder\Tests\TestAsset\Factory\FormDefinitionFactory as F;
+use Contenir\FormBuilder\Validator\FileUpload;
 use Contenir\FormBuilder\Validator\ValidatorFactory;
 use Laminas\Filter\StringTrim;
 use Laminas\Form\Element\Csrf;
 use Laminas\Form\Element\Submit;
 use Laminas\Form\Element\Text;
+use Laminas\InputFilter\FileInput;
 use Laminas\InputFilter\Input;
 use Laminas\InputFilter\InputFilter;
 use Laminas\Validator\EmailAddress;
@@ -209,6 +211,44 @@ final class FormBuilderServiceTest extends TestCase
                 $filter->get('_submit')->isRequired(),
             ],
         );
+    }
+
+    #[Test]
+    public function fileFieldChecksTheUploadWithoutLaminasUploadCheck(): void
+    {
+        $options = ['max_size' => 2048, 'extensions' => 'pdf'];
+        $filter  = $this->inputFilter($this->builder()->build(F::form([
+            F::field('file', 'cv', required: true, options: $options),
+        ])));
+        $input = $filter->get('cv');
+
+        static::assertInstanceOf(FileInput::class, $input);
+        static::assertFalse($input->getAutoPrependUploadValidator());
+        static::assertTrue($input->isRequired());
+        static::assertEquals(
+            [FileUpload::fromOptions($options)],
+            array_column($input->getValidatorChain()->getValidators(), 'instance'),
+        );
+    }
+
+    #[Test]
+    public function fileFieldWithoutSettingsGetsTheDefaultCheck(): void
+    {
+        $input = $this->inputFilter($this->builder()->build(F::form([F::field('file', 'cv')])))->get('cv');
+
+        static::assertInstanceOf(FileInput::class, $input);
+        static::assertEquals(
+            [new FileUpload()],
+            array_column($input->getValidatorChain()->getValidators(), 'instance'),
+        );
+    }
+
+    #[Test]
+    public function otherFieldsGetAPlainInput(): void
+    {
+        $input = $this->inputFilter($this->builder()->build(F::form([F::field('text', 'name')])))->get('name');
+
+        static::assertNotInstanceOf(FileInput::class, $input);
     }
 
     #[Test]

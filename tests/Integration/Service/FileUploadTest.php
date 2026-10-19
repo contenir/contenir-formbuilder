@@ -12,6 +12,7 @@ use Contenir\FormBuilder\Tests\TestAsset\Factory\FormDefinitionFactory as F;
 use Contenir\FormBuilder\Tests\TestAsset\Storage\RecordingUploadResolver;
 use Contenir\FormBuilder\Tests\Trait\InMemorySessionTrait;
 use Contenir\FormBuilder\Tests\Trait\TemporaryDirectoryTrait;
+use Contenir\FormBuilder\Validator\FileUpload;
 use Contenir\FormBuilder\Validator\ValidatorFactory;
 use Contenir\Storage\Adapter\InMemoryStorage;
 use Contenir\Storage\StorageManager;
@@ -21,8 +22,12 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
+use function array_keys;
 use function array_map;
+use function fclose;
 use function file_put_contents;
+use function fopen;
+use function ftruncate;
 use function is_file;
 
 use const UPLOAD_ERR_NO_FILE;
@@ -57,6 +62,18 @@ final class FileUploadTest extends TestCase
     }
 
     /**
+     * @return array<string, array{array<string, mixed>, string}>
+     */
+    public static function disallowedUploadProvider(): array
+    {
+        return [
+            'over the field limit'     => [['max_size' => 4], FileUpload::TOO_LARGE],
+            'disallowed extension'     => [['extensions' => 'docx'], FileUpload::EXTENSION],
+            'disallowed detected type' => [['mime_types' => 'image/png'], FileUpload::MIME_TYPE],
+        ];
+    }
+
+    /**
      * @return array<string, array{array<string, mixed>}>
      */
     public static function precedingUploadProvider(): array
@@ -81,6 +98,33 @@ final class FileUploadTest extends TestCase
         ];
     }
 
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function spamProvider(): array
+    {
+        return [
+            'valid spam'   => ['Ann', 'bot'],
+            'invalid spam' => ['', 'bot'],
+        ];
+    }
+
+    #[Test]
+    public function allowedUploadIsStored(): void
+    {
+        $form = F::form([F::field('file', 'cv', options: [
+            'max_size'   => 8,
+            'extensions' => 'pdf',
+            'mime_types' => 'application/pdf',
+        ])]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit($form, $this->post($form), ['cv' => $this->file()]);
+
+        static::assertTrue($result->valid);
+        static::assertSame('forms/contact/cv.pdf', $result->values['cv']);
+    }
+
     #[Test]
     #[DataProvider('clientTypeProvider')]
     public function clientTypeIsPassedToStorageOnlyWhenItIsANonEmptyString(mixed $type, ?string $expected): void
@@ -96,6 +140,23 @@ final class FileUploadTest extends TestCase
         static::assertSame([$expected], array_map(static fn($upload) => $upload->clientMime, $resolver->uploads));
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
+    #[Test]
+    #[DataProvider('disallowedUploadProvider')]
+    public function disallowedUploadIsRejectedAndNotStored(array $options, string $error): void
+    {
+        $form    = F::form([F::field('file', 'cv', options: $options)]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit($form, $this->post($form), ['cv' => $this->file(['type' => 'image/png'])]);
+
+        static::assertFalse($result->valid);
+        static::assertSame([$error], array_keys($result->errors['cv']));
+        static::assertFalse($this->storage->exists('forms/contact/cv.pdf'));
+    }
+
     #[Test]
     public function emptyClientTypeIsLeftToTheStorageBackend(): void
     {
@@ -109,6 +170,41 @@ final class FileUploadTest extends TestCase
          * sniffs the content; either way the empty client type is not used.
          */
         static::assertMatchesRegularExpression('#^[a-z]+/[a-z0-9.+-]+$#', $this->storedMimeTypes()[0] ?? '');
+    }
+
+    #[Test]
+    public function hiddenConditionalUploadIsNotStoredButLaterUploadsAre(): void
+    {
+        $form = F::form([
+            F::field('text', 'mode'),
+            F::field('file', 'cv', conditional: [
+                'show_when' => ['all' => [['field' => 'mode', 'op' => 'equals', 'value' => 'apply']]],
+            ]),
+            F::field('file', 'photo'),
+        ]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit($form, $this->post($form, ['mode' => 'ask']), [
+            'cv'    => $this->file(),
+            'photo' => $this->file(['name' => 'photo.pdf']),
+        ]);
+
+        static::assertTrue($result->valid);
+        static::assertArrayNotHasKey('cv', $result->values);
+        static::assertFalse($this->storage->exists('forms/contact/cv.pdf'));
+        static::assertSame('forms/contact/photo.pdf', $result->values['photo']);
+    }
+
+    #[Test]
+    public function invalidSubmissionStoresNothing(): void
+    {
+        $form    = F::form([F::field('text', 'name', required: true), F::field('file', 'cv')]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit($form, $this->post($form, ['name' => '']), ['cv' => $this->file()]);
+
+        static::assertArrayHasKey('name', $result->errors);
+        static::assertFalse($this->storage->exists('forms/contact/cv.pdf'));
     }
 
     /**
@@ -154,6 +250,18 @@ final class FileUploadTest extends TestCase
     }
 
     #[Test]
+    public function postedValueForAFileFieldIsIgnored(): void
+    {
+        $form    = F::form([F::field('text', 'name'), F::field('file', 'cv')]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit($form, $this->post($form, ['cv' => 'forms/other/secret.pdf']));
+
+        static::assertTrue($result->valid);
+        static::assertNull($result->values['cv']);
+    }
+
+    #[Test]
     public function realServiceOnlyAcceptsHttpUploads(): void
     {
         $form    = $this->uploadForm();
@@ -161,6 +269,47 @@ final class FileUploadTest extends TestCase
 
         $service->submit($form, $this->post($form), ['cv' => $this->file()]);
 
+        static::assertFalse($this->storage->exists('forms/contact/cv.pdf'));
+    }
+
+    #[Test]
+    public function requiredFileFieldAcceptsAnUpload(): void
+    {
+        $form    = F::form([F::field('file', 'cv', required: true)]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit($form, $this->post($form), ['cv' => $this->file()]);
+
+        static::assertSame([], $result->errors);
+        static::assertSame('forms/contact/cv.pdf', $result->values['cv']);
+    }
+
+    #[Test]
+    public function requiredFileFieldWithoutAnUploadIsRejected(): void
+    {
+        $form    = F::form([F::field('file', 'cv', required: true)]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit($form, $this->post($form));
+
+        static::assertArrayHasKey('cv', $result->errors);
+    }
+
+    #[Test]
+    #[DataProvider('spamProvider')]
+    public function spamSubmissionStoresNothingAndReportsNoFile(string $name, string $honeypot): void
+    {
+        $form    = F::form([F::field('text', 'name', required: true), F::field('file', 'cv')]);
+        $service = $this->acceptingService($this->manager);
+
+        $result = $service->submit(
+            $form,
+            $this->post($form, ['name' => $name, FormBuilderService::HONEYPOT_NAME => $honeypot]),
+            ['cv' => $this->file()],
+        );
+
+        static::assertTrue($result->isSpam);
+        static::assertNull($result->values['cv']);
         static::assertFalse($this->storage->exists('forms/contact/cv.pdf'));
     }
 
@@ -216,6 +365,25 @@ final class FileUploadTest extends TestCase
     }
 
     #[Test]
+    public function uploadOverTheDefaultLimitIsRejected(): void
+    {
+        $form    = $this->uploadForm();
+        $service = $this->acceptingService($this->manager);
+        $handle  = fopen($this->upload, mode: 'w');
+        static::assertNotFalse($handle);
+        ftruncate($handle, FileUpload::DEFAULT_MAX_SIZE + 1);
+        fclose($handle);
+
+        $result = $service->submit($form, $this->post($form), ['cv' => $this->file()]);
+
+        static::assertSame(
+            ['cv' => [FileUpload::TOO_LARGE => 'The file is larger than the 10 MB limit.']],
+            $result->errors,
+        );
+        static::assertFalse($this->storage->exists('forms/contact/cv.pdf'));
+    }
+
+    #[Test]
     public function uploadsAreSkippedWithoutADefaultStorageProfile(): void
     {
         $form    = $this->uploadForm();
@@ -234,8 +402,10 @@ final class FileUploadTest extends TestCase
         $form    = $this->uploadForm();
         $service = $this->acceptingService(null);
 
-        $service->submit($form, $this->post($form), ['cv' => $this->file()]);
+        $result = $service->submit($form, $this->post($form), ['cv' => $this->file()]);
 
+        static::assertTrue($result->valid);
+        static::assertNull($result->values['cv']);
         static::assertFalse($this->storage->exists('forms/contact/cv.pdf'));
     }
 

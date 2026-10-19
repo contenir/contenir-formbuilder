@@ -6,19 +6,22 @@ namespace Contenir\FormBuilder\Service;
 
 use ArrayObject;
 use Closure;
+use Contenir\FormBuilder\Clock\SystemClock;
 use Contenir\FormBuilder\Conditional\RuleEvaluator;
 use Contenir\FormBuilder\Definition\FormDefinition;
 use Contenir\Storage\Exception\StorageException;
+use Contenir\Storage\StorageInterface;
 use Contenir\Storage\StorageManager;
 use Contenir\Storage\UploadInput;
-use DateTimeImmutable;
 use Laminas\Form\Exception\ExceptionInterface as FormException;
 use Laminas\Form\FormInterface;
+use Psr\Clock\ClockInterface;
 use SplObserver;
 
 use function array_diff;
 use function array_key_exists;
 use function array_keys;
+use function array_replace;
 use function is_array;
 use function is_int;
 use function is_string;
@@ -39,7 +42,11 @@ use const UPLOAD_ERR_OK;
  * Optional `$storageManager` is consulted for `file` field uploads. When
  * null (or unconfigured for the default profile), file uploads are
  * silently skipped — this keeps the engine usable in tests and in
- * deployments that don't accept uploads.
+ * deployments that don't accept uploads. Uploads are validated with the
+ * rest of the submission and stored only once it has passed validation and
+ * the spam check.
+ *
+ * @phpstan-type Upload array{name: string, type: string|null, tmp_name: string}
  *
  * @api
  *
@@ -49,6 +56,8 @@ use const UPLOAD_ERR_OK;
  */
 final class FormSubmissionService
 {
+    private ClockInterface $clock;
+
     /** @var list<SplObserver> */
     private array $observers = [];
 
@@ -60,14 +69,17 @@ final class FormSubmissionService
     /**
      * @param (Closure(string): bool)|null $isUploadedFile Decides whether a temporary path is an HTTP
      *                                                    upload; defaults to is_uploaded_file().
+     * @param ClockInterface|null $clock Supplies the submission time; defaults to the system clock.
      */
     public function __construct(
         private FormBuilderInterface $builder,
         private ?StorageManager $storageManager = null,
         ?Closure $isUploadedFile = null,
+        ?ClockInterface $clock = null,
     ) {
         $this->conditionalEvaluator = new RuleEvaluator();
         $this->isUploadedFile       = $isUploadedFile ?? is_uploaded_file(...);
+        $this->clock                = $clock ?? new SystemClock();
     }
 
     public function attach(SplObserver $observer): void
@@ -76,8 +88,11 @@ final class FormSubmissionService
     }
 
     /**
-     * Observers are notified only for a valid or spam-flagged submission, and
-     * only when the builder returns a {@see BuilderForm}. The submission
+     * Uploads are stored only for a valid, non-spam submission, and only for
+     * fields that are not hidden by a conditional rule; a spam submission
+     * reports `null` for its file fields. Observers are notified only for a
+     * valid or spam-flagged submission, and only when the builder returns a
+     * {@see BuilderForm}. The submission
      * timestamp is captured once, so `{entry:date}` reads the same for every
      * observer. The registry's `entry` attributes are seeded before the first
      * observer and refreshed after each one, so `{entry:id}` picks up the
@@ -107,7 +122,9 @@ final class FormSubmissionService
             unset($post[FormBuilderService::HONEYPOT_NAME]);
         }
 
-        $post         = $this->processFileUploads($form, $post, $files);
+        $storage      = $this->defaultStorage();
+        $uploads      = null === $storage ? [] : $this->collectUploads($form, $files);
+        $post         = array_replace($this->withoutFileValues($form, $post), $uploads);
         $hiddenFields = $this->applyConditionalGating($built, $form, $post);
 
         $built->setData($post);
@@ -128,6 +145,8 @@ final class FormSubmissionService
         foreach ($hiddenFields as $name) {
             unset($values[$name]);
         }
+
+        $values = $this->withStoredUploads($isSpam ? null : $storage, $form, $values, $uploads);
 
         if ($built instanceof BuilderForm) {
             $this->notifyObservers($built, $form, $values, $isSpam, $context);
@@ -191,6 +210,58 @@ final class FormSubmissionService
     }
 
     /**
+     * The usable uploads for `file` fields, keyed by field name: those PHP
+     * received without error whose temporary path is an HTTP upload. Each is
+     * validated with the rest of the submission and stored only afterwards.
+     *
+     * @param array<string, mixed> $files
+     *
+     * @return array<string, Upload>
+     *
+     * @mago-expect analysis:mixed-assignment `$_FILES` entries are untyped; each key is checked before use.
+     */
+    private function collectUploads(FormDefinition $form, array $files): array
+    {
+        $uploads = [];
+        foreach ($form->getAllFields() as $field) {
+            $upload = $files[$field->name] ?? null;
+            if ('file' !== $field->type || ! is_array($upload)) {
+                continue;
+            }
+
+            $error   = $upload['error'] ?? UPLOAD_ERR_NO_FILE;
+            $tmpPath = $upload['tmp_name'] ?? '';
+            if (
+                UPLOAD_ERR_OK !== $error
+                || ! is_string($tmpPath)
+                || '' === $tmpPath
+                || ! ($this->isUploadedFile)($tmpPath)
+            ) {
+                continue;
+            }
+
+            $name                  = $upload['name'] ?? null;
+            $type                  = $upload['type'] ?? null;
+            $uploads[$field->name] = [
+                'name'     => is_string($name) ? $name : 'upload',
+                'type'     => is_string($type) && '' !== $type ? $type : null,
+                'tmp_name' => $tmpPath,
+            ];
+        }
+
+        return $uploads;
+    }
+
+    private function defaultStorage(): ?StorageInterface
+    {
+        if (null === $this->storageManager || ! $this->storageManager->has(StorageManager::DEFAULT_PROFILE)) {
+            return null;
+        }
+
+        return $this->storageManager->get(StorageManager::DEFAULT_PROFILE);
+    }
+
+    /**
      * @param array<string, mixed> $post
      *
      * @mago-expect analysis:mixed-assignment POST values are untyped; the honeypot is checked with is_string().
@@ -240,7 +311,7 @@ final class FormSubmissionService
 
         $built->registry = $registry;
 
-        $submittedAt = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+        $submittedAt = $this->clock->now()->format('Y-m-d H:i:s');
 
         $this->updateEntryRegistry($built, $context, $submittedAt);
         foreach ($this->observers as $observer) {
@@ -250,73 +321,16 @@ final class FormSubmissionService
     }
 
     /**
-     * Stash any uploaded files via the project's Storage layer before
-     * validation runs, replacing the file-field's value in $post with
-     * the relative storage path. After this step the form treats file
-     * fields like any other scalar — validation, conditional gating,
-     * persistence and notifications all see a string path rather than
-     * an upload struct, so none of them need a special case.
-     *
-     * Files land under `forms/<form-slug>/` in the configured Storage
-     * profile; the storage layer disambiguates filenames so multiple
-     * submissions to the same form can't overwrite each other.
-     *
-     * @param array<string, mixed> $post
-     * @param array<string, mixed> $files
-     *
-     * @return array<string, mixed>
+     * @param Upload $upload
      *
      * @throws StorageException
-     *
-     * @mago-expect analysis:mixed-assignment `$_FILES` entries are untyped; each key is checked before use.
      */
-    private function processFileUploads(FormDefinition $form, array $post, array $files): array
+    private function storeUpload(StorageInterface $storage, FormDefinition $form, array $upload): string
     {
-        foreach ($form->getAllFields() as $field) {
-            $upload = $files[$field->name] ?? null;
-            if ('file' !== $field->type || ! is_array($upload)) {
-                continue;
-            }
-
-            $error   = $upload['error'] ?? UPLOAD_ERR_NO_FILE;
-            $tmpPath = $upload['tmp_name'] ?? '';
-            if (
-                UPLOAD_ERR_OK !== $error
-                || ! is_string($tmpPath)
-                || '' === $tmpPath
-                || ! ($this->isUploadedFile)($tmpPath)
-            ) {
-                continue;
-            }
-
-            $name   = $upload['name'] ?? null;
-            $type   = $upload['type'] ?? null;
-            $stored = $this->storeUpload(
-                $form,
-                $tmpPath,
-                is_string($name) ? $name : 'upload',
-                is_string($type) && '' !== $type ? $type : null,
-            );
-            if (null !== $stored) {
-                $post[$field->name] = $stored;
-            }
-        }
-
-        return $post;
-    }
-
-    /**
-     * @throws StorageException
-     */
-    private function storeUpload(FormDefinition $form, string $tmpPath, string $clientName, ?string $mimeType): ?string
-    {
-        if (null === $this->storageManager || ! $this->storageManager->has(StorageManager::DEFAULT_PROFILE)) {
-            return null;
-        }
-
-        $entry = $this->storageManager
-            ->get(StorageManager::DEFAULT_PROFILE)
-            ->store(new UploadInput($tmpPath, $clientName, $mimeType), 'forms/' . trim($form->slug, characters: '/'));
+        $entry = $storage->store(
+            new UploadInput($upload['tmp_name'], $upload['name'], $upload['type']),
+            'forms/' . trim($form->slug, characters: '/'),
+        );
 
         return $entry->path;
     }
@@ -358,6 +372,27 @@ final class FormSubmissionService
     }
 
     /**
+     * A file field's value comes only from its upload, never from POST data,
+     * so a client cannot submit a storage path as if it had uploaded it.
+     *
+     * @param array<string, mixed> $post
+     *
+     * @return array<string, mixed>
+     */
+    private function withoutFileValues(FormDefinition $form, array $post): array
+    {
+        foreach ($form->getAllFields() as $field) {
+            if ('file' !== $field->type) {
+                continue;
+            }
+
+            unset($post[$field->name]);
+        }
+
+        return $post;
+    }
+
+    /**
      * @param array<string, mixed> $values
      *
      * @return array<string, mixed>
@@ -365,6 +400,40 @@ final class FormSubmissionService
     private function withoutInternalValues(array $values): array
     {
         unset($values[FormBuilderService::CSRF_NAME], $values[FormBuilderService::HONEYPOT_NAME], $values['_submit']);
+
+        return $values;
+    }
+
+    /**
+     * Stores the uploads of the fields still in $values, replacing each
+     * upload with its relative storage path. Without a storage backend (a
+     * spam submission is given none) nothing is stored and each value is
+     * `null`, so no temporary path leaks into the values.
+     *
+     * Files land under `forms/<form-slug>/` in the configured Storage
+     * profile; the storage layer disambiguates filenames so multiple
+     * submissions to the same form can't overwrite each other.
+     *
+     * @param array<string, mixed> $values
+     * @param array<string, Upload> $uploads
+     *
+     * @return array<string, mixed>
+     *
+     * @throws StorageException
+     */
+    private function withStoredUploads(
+        ?StorageInterface $storage,
+        FormDefinition $form,
+        array $values,
+        array $uploads,
+    ): array {
+        foreach ($uploads as $name => $upload) {
+            if (! array_key_exists($name, $values)) {
+                continue;
+            }
+
+            $values[$name] = null === $storage ? null : $this->storeUpload($storage, $form, $upload);
+        }
 
         return $values;
     }

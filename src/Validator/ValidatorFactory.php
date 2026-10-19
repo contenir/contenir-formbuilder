@@ -112,6 +112,17 @@ final class ValidatorFactory
     }
 
     /**
+     * The upload check for a `file` field, configured from the field's
+     * options as described on {@see FileUpload::fromOptions()}.
+     *
+     * @param array<string, mixed> $options
+     */
+    public function fileUpload(array $options): FileUpload
+    {
+        return FileUpload::fromOptions($options);
+    }
+
+    /**
      * @param array<string, mixed> $options
      *
      * @mago-expect analysis:deprecated-class Between is deprecated from laminas-validator 2.60; NumberComparison needs a higher minimum.

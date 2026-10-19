@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Contenir\FormBuilder\Tests\Unit\Validator;
 
 use Contenir\FormBuilder\Definition\ValidatorDefinition;
+use Contenir\FormBuilder\Validator\FileUpload;
 use Contenir\FormBuilder\Validator\ValidatorFactory;
 use InvalidArgumentException;
 use Laminas\Validator\Between;
@@ -108,6 +109,15 @@ final class ValidatorFactoryTest extends TestCase
         static::assertNotNull($validator);
         $validator->isValid('x');
         static::assertSame(['The input is not a valid http or https URL'], array_values($validator->getMessages()));
+    }
+
+    #[Test]
+    public function fileUploadIsConfiguredFromTheFieldOptions(): void
+    {
+        $options = ['max_size' => 2048, 'extensions' => 'pdf', 'mime_types' => ['application/pdf']];
+
+        static::assertEquals(FileUpload::fromOptions($options), (new ValidatorFactory())->fileUpload($options));
+        static::assertNotEquals(new FileUpload(), (new ValidatorFactory())->fileUpload($options));
     }
 
     /** @param class-string $expectedClass */

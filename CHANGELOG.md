@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.0-RC2] - 2026-10-19
+
+Safe file uploads: uploads are validated on the server and stored only for a
+valid, non-spam submission. See [UPGRADE-2.0.md](UPGRADE-2.0.md#file-uploads).
+
+### Security
+
+- `FormSubmissionService` stored uploads before validation, so spam,
+  submissions that failed validation and fields hidden by a conditional rule
+  all left orphaned files in storage. Uploads are now validated with the rest
+  of the submission and stored only once it is valid and not spam, and only
+  for visible fields.
+- `file` fields had no server-side size or type check; only the HTML `accept`
+  hint limited them. Every `file` field now has a maximum size (10 MB unless
+  set) and optional allowed extensions and MIME types. The MIME type is
+  detected from the file's contents with finfo, not taken from the client.
+- A `file` field's value now comes only from its upload. A client could post
+  a storage path as the field's value and have it accepted as if uploaded.
+
+### Added
+
+- `Validator\FileUpload`, the upload check, configured from a `file` field's
+  `max_size` (bytes), `extensions` and `mime_types` options, and
+  `ValidatorFactory::fileUpload()`, which builds it.
+- `FormSubmissionService` takes an optional fourth argument, a PSR-20
+  `ClockInterface` that supplies the submission time (`{entry:date}`). It
+  defaults to the system clock.
+
+### Changed
+
+- Requires `psr/clock` and `ext-fileinfo`.
+- A spam submission's file fields are `null` (they were the stored path).
+- A `file` field's input is a Laminas `FileInput` whose built-in
+  `is_uploaded_file()` check is off; `FormSubmissionService` makes that check
+  through its replaceable closure.
+
+### Fixed
+
+- A required `file` field always failed with "No file was uploaded", even with
+  an upload.
+
 ## [2.0.0-RC1] - 2026-10-07
 
 The first 2.0 pre-release. The public API keeps its shape. The major version
