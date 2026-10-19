@@ -5,11 +5,13 @@
     "license": "MIT",
     "require": {
         "php": "~8.3.0 || ~8.4.0 || ~8.5.0",
+        "ext-fileinfo": "*",
         "laminas/laminas-filter": "^2.30",
         "laminas/laminas-form": "^3.20",
         "laminas/laminas-inputfilter": "^2.30",
         "laminas/laminas-session": "^2.16",
         "laminas/laminas-validator": "^2.50 || ^3.0",
+        "psr/clock": "^1.0",
         "psr/log": "^1.0 || ^2.0 || ^3.0"
     },
     "require-dev": {

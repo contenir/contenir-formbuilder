@@ -21,7 +21,7 @@ builder UI which settings apply to it.
 | `radio` | `Radio` | `choices` |
 | `checkbox` | `Checkbox` | |
 | `multicheckbox` | `MultiCheckbox` | `choices`; default is comma-separated |
-| `file` | `File` | `accept` |
+| `file` | `File` | `accept`; `max_size`, `extensions`, `mime_types` (server-side, see [Validators](validators.md#file-uploads)) |
 | `hidden` | `Hidden` | |
 | `content` | `Hidden` (never added) | Static block: `options['html']` is rendered, sanitized |
 

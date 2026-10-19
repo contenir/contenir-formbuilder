@@ -29,6 +29,8 @@ available when the form is rendered and validated.
 
 ```php
 $service = new FormSubmissionService($builder, $storageManager /* optional */);
+// Optional: a PSR-20 clock for the submission time ({entry:date}), e.g. in tests
+$service = new FormSubmissionService($builder, $storageManager, clock: $clock);
 $service->attach($observer); // SplObserver, notified in attach order
 $result  = $service->submit($definition, $_POST, $_FILES, [
     'ip'      => $_SERVER['REMOTE_ADDR'] ?? null,
@@ -41,15 +43,19 @@ $result  = $service->submit($definition, $_POST, $_FILES, [
 
 1. Builds the form.
 2. Flags spam when the honeypot is non-empty or not a string.
-3. Stores `file` uploads (see below) and replaces their POST value with the
-   stored path.
+3. Takes each `file` field's value from its upload (see below), ignoring any
+   POST value for it.
 4. Leaves fields whose [conditional rule](conditional-logic.md) fails out of
    validation.
-5. Validates. A failed, non-spam submission returns immediately, without
+5. Validates, including each upload's size, extension and MIME type. A failed,
+   non-spam submission returns immediately, without storing uploads or
    notifying observers.
 6. Collects the values (validated data when valid, raw POST for invalid spam)
    minus `_csrf`, `hid`, `_submit` and hidden conditional fields.
-7. Notifies the observers.
+7. Stores the uploads of the remaining file fields and replaces their values
+   with the stored paths. A spam submission stores nothing; its file fields
+   are `null`.
+8. Notifies the observers.
 
 It throws Laminas form exceptions for a broken form and `StorageException`
 when the storage backend fails.
@@ -89,15 +95,19 @@ callers that want to drive observers themselves.
 
 ### File uploads
 
-Fields of type `file` are stored when:
+A `file` field receives an upload when:
 
 - a `StorageManager` was passed and has the `local` (default) profile;
 - the matching `$_FILES` entry has `error === UPLOAD_ERR_OK`;
 - its `tmp_name` is an HTTP upload (`is_uploaded_file()`).
 
-Files go to `forms/<form slug>/` through `StorageInterface::store()`. Without
-a storage manager, uploads are skipped silently. The upload check can be
-replaced through the constructor's third argument:
+The upload is then validated against the field's
+[file settings](validators.md#file-uploads) (10 MB by default) and stored only
+once the whole submission is valid and not spam, and only if the field is not
+hidden by a conditional rule. Files go to `forms/<form slug>/` through
+`StorageInterface::store()`. Without a storage manager, uploads are skipped
+silently and the field's value is `null`. The upload check can be replaced
+through the constructor's third argument:
 
 ```php
 $service = new FormSubmissionService($builder, $storage, fn (string $path): bool => is_file($path));

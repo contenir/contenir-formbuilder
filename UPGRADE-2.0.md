@@ -142,6 +142,32 @@ FormContentSanitizer::sanitize('<a href="java&#9;script:alert(1)">x</a>');
 - `WebhookRegistrar` skips a submission only when the registry's `spam` value
   is `true`; 0.x treated any truthy value as spam.
 
+## File uploads
+
+From 2.0.0-RC2, uploads to `file` fields are checked on the server and stored
+only for a valid, non-spam submission. No code changes are needed, but check
+the following:
+
+- Every `file` field has a 10 MB limit unless its options set `max_size` (in
+  bytes). Raise it on fields that must accept larger files, and keep PHP's
+  `upload_max_filesize` and `post_max_size` at least as large.
+- Fields can restrict uploads with `extensions` and `mime_types` options;
+  without them any type is accepted, as before. `accept` remains a browser
+  hint only.
+- A spam submission's file fields are `null`, and nothing is stored for it.
+  Observers that read a stored path for spam entries get `null` instead.
+- A `file` field's value comes only from `$_FILES`. A value posted under the
+  field's name is ignored.
+- `ext-fileinfo` and `psr/clock` are now required.
+
+```php
+new FieldDefinition(null, 'file', 'cv', options: [
+    'max_size'   => 20 * 1024 * 1024,
+    'extensions' => 'pdf, docx',
+    'mime_types' => 'application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+```
+
 ## Package renamed
 
 From 2.0, the package is published as `contenir/contenir-formbuilder`. It
