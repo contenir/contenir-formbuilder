@@ -1,6 +1,6 @@
 {
     "$schema": "vendor/infection/infection/resources/schema.json",
-    "source": { "directories": ["src"] },
+    "source": { "directories": ["src", "schema"] },
     "timeout": 10,
     "threads": "max",
     "logs": {
@@ -21,7 +21,12 @@
             "ignoreSourceCodeByRegex": ["'(min|max)' => is_numeric\\(\\$(min|max)\\) \\? \\(int\\) \\$(min|max) : (0|null),"]
         },
         "DecrementInteger": {
-            "ignoreSourceCodeByRegex": ["'min' => is_numeric\\(\\$min\\) \\? \\(int\\) \\$min : 0,"]
+            "ignoreSourceCodeByRegex": [
+                "'min' => is_numeric\\(\\$min\\) \\? \\(int\\) \\$min : 0,",
+                // SQLite reads a negative OFFSET as none, so 0 and -1 list the same entries there. The
+                // integration suite's MySQL run, which refuses a negative OFFSET, is not mutated.
+                "int \\$offset = 0,"
+            ]
         },
 
         "MatchArmRemoval": {
