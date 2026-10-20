@@ -23,9 +23,14 @@ validates submissions against it, and renders the markup:
 - **Rendering.** Framework-free HTML for single-page or stepped forms.
 - **Merge tags.** `{field:name}`, `{form:title}`, `{entry:fields}` and custom
   namespaces for notification templates and redirect URLs.
+- **Storage.** The `form_*` tables as a php-db migration, a form loader,
+  form and entry repositories, a streamed CSV export and retention-based
+  redaction, on MySQL or SQLite.
+- **Delivery.** Registrars that store entries and send notification emails
+  and signed webhooks, through a delivery seam a host can put a queue behind.
 
-This is the pure-PHP core. It has no opinion about how definitions are loaded
-or how submissions are stored. [`contenir/contenir-formbuilder-laminas-mvc`](https://github.com/contenir/contenir-formbuilder-laminas-mvc)
+This is the framework-free core, shared by the CMS and the site adapters.
+[`contenir/contenir-formbuilder-laminas-mvc`](https://github.com/contenir/contenir-formbuilder-laminas-mvc)
 wires it into a laminas-mvc application.
 
 ## Requirements
@@ -33,6 +38,8 @@ wires it into a laminas-mvc application.
 - PHP 8.3, 8.4 or 8.5
 - laminas-form 3.20+, laminas-inputfilter, laminas-validator, laminas-filter
 - laminas-session (backs the CSRF token)
+- php-db 0.6 and peptolab/phpdb-migration 0.2, with php-db's MySQL or SQLite
+  driver, for storage
 - `ext-curl` for webhooks
 - Optional: `contenir/contenir-storage` for the `file` field type
 
@@ -104,6 +111,8 @@ The full public API is described in [docs/](docs/):
 | [Building and submitting](docs/building-and-submitting.md) | `FormBuilderService`, `FormSubmissionService`, `SubmissionResult`, `BuilderForm`, observers, uploads |
 | [Rendering](docs/rendering.md) | `FormMarkup`, `FormContentSanitizer` |
 | [Merge tags](docs/merge-tags.md) | `TokenReplacer` |
+| [Storage](docs/storage.md) | The `form_*` tables and migration, `PhpDbFormLoader`, the form and entry repositories, CSV export, redaction, status changes |
+| [Notifications and delivery](docs/delivery.md) | `StoreSubmissionRegistrar`, `EmailNotificationRegistrar`, `DeliveryInterface`, sending through a queue |
 | [Webhooks](docs/webhooks.md) | `WebhookRegistrar` |
 
 ## Development
@@ -117,13 +126,17 @@ composer check             # everything below
 composer cs-check          # mago format --check && mago lint
 composer static-analysis   # mago analyze
 composer test              # unit suite: no I/O, no session, no network
-composer test-integration  # integration suite: in-memory session, temp files, a local HTTP server
+composer test-integration  # integration suite on SQLite, then MySQL: in-memory session, temp files, a local HTTP server
 composer test-coverage     # both suites, clover.xml for Codecov
 composer mutation-test     # Infection over both suites (needs Xdebug or PCOV)
 ```
 
 The webhook integration tests start PHP's built-in web server on a free
-loopback port.
+loopback port. The database tests run on in-memory SQLite, then on MySQL when
+`CONTENIR_TEST_DB_PLATFORM=mysql` (connection settings in
+`CONTENIR_TEST_DB_HOST`, `_PORT`, `_NAME`, `_USER` and `_PASSWORD`; the
+database defaults to `contenir_formbuilder_test`). A MySQL that cannot be
+reached skips those tests.
 
 ## License
 
