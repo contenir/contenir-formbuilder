@@ -91,5 +91,7 @@
             ]
         }
     },
+    // PCOV instruments only src/ unless told otherwise; the migrations live in schema/.
+    "initialTestsPhpOptions": "-d pcov.directory=. -d pcov.exclude=#/vendor/#",
     "staticAnalysisTool": "mago"
 }

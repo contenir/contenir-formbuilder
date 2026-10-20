@@ -89,22 +89,6 @@ final class TestDatabase
         }
     }
 
-    /**
-     * On SQLite, whether a select without an ORDER BY returns its rows
-     * backwards (as the tests' connections do) or in the order SQLite reads
-     * them. MySQL is left as it is.
-     */
-    public static function reverseUnorderedSelects(AdapterInterface $adapter, bool $reverse): void
-    {
-        if (self::isMysql()) {
-            return;
-        }
-        $adapter->query(
-            'PRAGMA reverse_unordered_selects = ' . ($reverse ? 'ON' : 'OFF'),
-            Adapter::QUERY_MODE_EXECUTE,
-        );
-    }
-
     public static function isMysql(): bool
     {
         return 'mysql' === self::env('PLATFORM', 'sqlite');
@@ -126,6 +110,19 @@ final class TestDatabase
             MismatchStrategy::Report,
             self::metadata($adapter),
         );
+    }
+
+    /**
+     * On SQLite, lets a select without an ORDER BY return its rows in the
+     * order SQLite reads them, not backwards as the tests' connections
+     * otherwise do. MySQL is left as it is.
+     */
+    public static function readUnorderedSelectsForwards(AdapterInterface $adapter): void
+    {
+        if (self::isMysql()) {
+            return;
+        }
+        $adapter->query('PRAGMA reverse_unordered_selects = OFF', Adapter::QUERY_MODE_EXECUTE);
     }
 
     /**

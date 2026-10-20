@@ -212,6 +212,16 @@ final class PhpDbEntryRepositoryTest extends TestCase
     }
 
     #[Test]
+    public function listsABatchNewestFirstWhicheverWayTheDatabaseReadsIt(): void
+    {
+        $older = $this->entry();
+        $newer = $this->entry();
+        TestDatabase::readUnorderedSelectsForwards($this->adapter);
+
+        static::assertSame([$newer, $older], $this->ids($this->entries->listEntriesBefore($this->formId, null, 2)));
+    }
+
+    #[Test]
     public function listsABatchOfEntriesNewestFirstBeforeAnId(): void
     {
         $ids = [];
@@ -234,16 +244,6 @@ final class PhpDbEntryRepositoryTest extends TestCase
                 $this->ids($this->entries->listEntriesBefore($this->formId, $ids[4], 10, ['spam'])),
             ],
         );
-    }
-
-    #[Test]
-    public function listsABatchNewestFirstWhicheverWayTheDatabaseReadsIt(): void
-    {
-        $older = $this->entry();
-        $newer = $this->entry();
-        TestDatabase::reverseUnorderedSelects($this->adapter, reverse: false);
-
-        static::assertSame([$newer, $older], $this->ids($this->entries->listEntriesBefore($this->formId, null, 2)));
     }
 
     #[Test]
