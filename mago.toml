@@ -2,7 +2,7 @@ extends = "vendor/contenir/contenir-qa-tools/mago.toml"
 php-version = "8.3.0"
 
 [source]
-paths = ["src", "tests"]
+paths = ["src", "schema", "tests"]
 includes = ["vendor"]
 
 [formatter]

@@ -4,8 +4,17 @@
 to the form's enabled webhooks.
 
 ```php
+$service->attach(new WebhookRegistrar(delivery: $delivery /* DeliveryInterface */));
+
+// or, sending at once with curl and logging failures:
 $service->attach(new WebhookRegistrar($logger /* ?LoggerInterface */, timeoutSeconds: 10));
 ```
+
+Each call goes through a `DeliveryInterface` (see
+[Notifications and delivery](delivery.md)). Without one, the registrar sends
+at once through a `CurlWebhookTransport` with the given timeout. The
+`timeoutSeconds` argument is deprecated: pass a delivery built with
+`new CurlWebhookTransport($seconds)` instead.
 
 For each `WebhookDefinition` that is enabled and has an `http://` or
 `https://` URL, it sends:
@@ -27,6 +36,6 @@ For each `WebhookDefinition` that is enabled and has an `http://` or
   it over the raw body and compare with `hash_equals()`.
 - **Skipped:** spam-flagged submissions, subjects that are not a `BuilderForm`
   with a registry holding a `FormDefinition`, and forms without webhooks.
-- **Failures** (connection errors and HTTP 400+) are logged as warnings and
-  never thrown, so a slow or broken endpoint cannot block the visitor's
-  response or roll back the stored entry.
+- **Failures** (connection errors and HTTP 400+) are logged as warnings by
+  `ImmediateDelivery` and never thrown, so a slow or broken endpoint cannot
+  block the visitor's response or roll back the stored entry.

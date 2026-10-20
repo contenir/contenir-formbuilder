@@ -34,6 +34,7 @@
     <source>
         <include>
             <directory suffix=".php">./src</directory>
+            <directory suffix=".php">./schema</directory>
         </include>
     </source>
 </phpunit>

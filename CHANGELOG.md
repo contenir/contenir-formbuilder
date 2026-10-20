@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.0-RC3] - 2026-10-20
+
+One storage layer for forms and entries, over php-db, so the CMS and the site
+adapters stop carrying their own copies of the loader, repositories and
+registrars. See [docs/storage.md](docs/storage.md) and
+[docs/delivery.md](docs/delivery.md).
+
+### Added
+
+- The nine `form_*` tables as a php-db migration in `schema/`
+  (`Contenir\FormBuilder\Schema`), with the CMS installer's names, columns
+  and keys. Where the tables already exist it changes nothing and is only
+  recorded as run. `ConfigProvider` gives its path and namespace, and lists
+  it under `contenir.schema_migrations`.
+- `Loader\FormLoaderInterface` and `PhpDbFormLoader`: whole form definitions
+  in seven queries, and form summaries in one.
+- `Repository\FormRepositoryInterface` and `PhpDbFormRepository`: every
+  change the form editor makes, with multi-statement changes in one
+  transaction.
+- `Repository\EntryRepositoryInterface` and `PhpDbEntryRepository`: storing,
+  listing, filtering, counting, status changes, deletion, `findExpired()` and
+  `redact()`, with times from an injected PSR-20 clock.
+- `Persistence\PersistenceException`, thrown for every database failure.
+- The delivery seam: `Delivery\DeliveryInterface`, `ImmediateDelivery`,
+  `EmailMessage` and `WebhookRequest` (with `toArray()` and `fromArray()` for
+  queues), `MailTransportInterface`, `WebhookTransportInterface`,
+  `CurlWebhookTransport` and `WebhookResponse`.
+- `Registrar\StoreSubmissionRegistrar` and `EmailNotificationRegistrar`.
+  Notification conditions are evaluated, and the body's submitted values are
+  HTML-escaped.
+- `Entry\EntryStatusChanger`: sends on an entry held as spam once it is
+  marked complete, once at most.
+- `Export\EntryCsvWriter`: streamed CSV in batches, spam left out by
+  default, formula-safe cells.
+- `Redaction\ExpiredEntryRedactor`, `RedactionReport`, `EntryFilesInterface`,
+  `StorageEntryFiles` and `NoFileStorage`: redacts entries past their form's
+  retention period, deleting their files first.
+
+### Changed
+
+- Requires `php-db/phpdb` ^0.6 and `peptolab/phpdb-migration` ^0.2. Install
+  php-db's MySQL or SQLite driver as well.
+- `WebhookRegistrar` sends through a `DeliveryInterface`, given as a new third
+  constructor argument; without one it sends at once with curl, as before.
+  The payload, headers, signature and log messages are unchanged.
+
+### Deprecated
+
+- `WebhookRegistrar`'s `$timeoutSeconds` argument. Pass a delivery built with
+  `new CurlWebhookTransport($seconds)` instead.
+
 ## [2.0.0-RC2] - 2026-10-19
 
 Safe file uploads: uploads are validated on the server and stored only for a

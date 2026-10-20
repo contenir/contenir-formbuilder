@@ -1,6 +1,6 @@
 {
     "name": "contenir/contenir-formbuilder",
-    "description": "Framework-agnostic form-builder engine for Contenir CMS — runtime-editable form definitions, builder-form construction, server-side submission validation.",
+    "description": "Framework-agnostic form-builder engine for Contenir CMS — runtime-editable form definitions, builder-form construction, server-side submission validation, and their storage with php-db on MySQL or SQLite.",
     "type": "library",
     "license": "MIT",
     "require": {
@@ -11,6 +11,8 @@
         "laminas/laminas-inputfilter": "^2.30",
         "laminas/laminas-session": "^2.16",
         "laminas/laminas-validator": "^2.50 || ^3.0",
+        "peptolab/phpdb-migration": "^0.2",
+        "php-db/phpdb": "^0.6.0",
         "psr/clock": "^1.0",
         "psr/log": "^1.0 || ^2.0 || ^3.0"
     },
@@ -18,6 +20,8 @@
         "contenir/contenir-qa-tools": "0.1.x-dev",
         "contenir/contenir-storage": "^2.2",
         "infection/infection": "^0.34.1",
+        "php-db/phpdb-mysql": "0.5.x-dev",
+        "php-db/phpdb-sqlite": "0.3.x-dev",
         "phpunit/phpunit": "^11.5.42"
     },
     "replace": {
@@ -27,11 +31,14 @@
         "laminas/laminas-stdlib": "<3.21"
     },
     "suggest": {
-        "contenir/contenir-storage": "Required for the file field type. Pass a Contenir\\Storage\\StorageManager into FormSubmissionService when uploads need to land on a configured storage profile."
+        "contenir/contenir-storage": "Required for the file field type. Pass a Contenir\\Storage\\StorageManager into FormSubmissionService when uploads need to land on a configured storage profile.",
+        "php-db/phpdb-mysql": "The MySQL driver for php-db, for the form_* tables on a site's MySQL database.",
+        "php-db/phpdb-sqlite": "The SQLite driver for php-db, for the form_* tables on SQLite."
     },
     "autoload": {
         "psr-4": {
-            "Contenir\\FormBuilder\\": "src/"
+            "Contenir\\FormBuilder\\": "src/",
+            "Contenir\\FormBuilder\\Schema\\": "schema/"
         }
     },
     "autoload-dev": {
@@ -57,8 +64,12 @@
         ],
         "static-analysis": "mago analyze",
         "test": "phpunit --colors=always --testsuite unit",
-        "test-integration": "phpunit --colors=always --testsuite integration",
-        "test-coverage": "phpunit --colors=always --coverage-clover clover.xml",
+        "test-integration": [
+            "phpunit --colors=always --testsuite integration",
+            "@putenv CONTENIR_TEST_DB_PLATFORM=mysql",
+            "phpunit --colors=always --testsuite integration"
+        ],
+        "test-coverage": "@php -d pcov.directory=. -d pcov.exclude=#/vendor/# vendor/bin/phpunit --colors=always --coverage-clover clover.xml",
         "mutation-test": "infection"
     },
     "config": {
@@ -71,6 +82,9 @@
         }
     },
     "extra": {
+        "laminas": {
+            "config-provider": "Contenir\\FormBuilder\\ConfigProvider"
+        },
         "branch-alias": {
             "dev-main": "2.0.x-dev"
         }
