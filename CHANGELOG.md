@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- `ImmediateDelivery` logs each email notification and webhook it sends, at info, naming the notification or
+  webhook and the form, as it already logged each that failed. Recipients' addresses are never logged.
+
 ## [2.0.0-RC3] - 2026-10-20
 
 One storage layer for forms and entries, over php-db, so the CMS and the site
