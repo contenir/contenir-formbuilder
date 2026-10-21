@@ -67,6 +67,7 @@ final class ImmediateDeliveryTest extends TestCase
         $log->expects($this->once())
             ->method('warning')
             ->with('Form notification "Staff" failed for form "contact": Connection refused');
+        $log->expects($this->never())->method('info');
 
         (new ImmediateDelivery($mail, log: $log))->email(MessageFactory::email());
     }
@@ -79,18 +80,20 @@ final class ImmediateDeliveryTest extends TestCase
         $mail->expects($this->once())->method('send')->with($message);
         $log = $this->createMock(LoggerInterface::class);
         $log->expects($this->never())->method('warning');
+        $log->expects($this->once())->method('info')->with('Sent form notification "Staff" for form "contact"');
 
         (new ImmediateDelivery($mail, log: $log))->email($message);
     }
 
     #[Test]
-    public function sendsAWebhookAndLogsNothingWhenItSucceeds(): void
+    public function sendsAWebhookAndLogsThatItWasSent(): void
     {
         $request   = MessageFactory::webhook();
         $transport = $this->createMock(WebhookTransportInterface::class);
         $transport->expects($this->once())->method('send')->with($request)->willReturn(new WebhookResponse(204));
         $log = $this->createMock(LoggerInterface::class);
         $log->expects($this->never())->method('warning');
+        $log->expects($this->once())->method('info')->with('Sent webhook "CRM" for form "contact" (status 204)');
 
         (new ImmediateDelivery(
             webhooks: $transport,

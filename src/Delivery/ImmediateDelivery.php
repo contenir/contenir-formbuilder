@@ -38,7 +38,11 @@ final readonly class ImmediateDelivery implements DeliveryInterface
             $this->mail->send($message);
         } catch (Throwable $e) {
             $this->emailFailed($message, $e->getMessage());
+
+            return;
         }
+
+        $this->log?->info("Sent form notification \"{$message->name}\" for form \"{$message->form}\"");
     }
 
     #[Override]
@@ -46,6 +50,10 @@ final readonly class ImmediateDelivery implements DeliveryInterface
     {
         $response = $this->webhooks->send($request);
         if (! $response->failed()) {
+            $this->log?->info(
+                "Sent webhook \"{$request->name}\" for form \"{$request->form}\" (status {$response->status})",
+            );
+
             return;
         }
 
