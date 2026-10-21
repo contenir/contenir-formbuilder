@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] - 2026-10-22
+
+### Fixed
+
+- Packagist served an archived build from 2026-10-05 as 2.0.0, without this release's php-db, migration and clock
+  requirements. 2.0.1 is the same code as 2.0.0; require `^2.0.1`.
+
 ## [2.0.0] - 2026-10-21
 
 The stable 2.0 release: the storage layer, delivery and retention of the release candidates below, road-tested
