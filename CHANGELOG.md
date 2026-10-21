@@ -4,7 +4,10 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.0.0] - 2026-10-21
+
+The stable 2.0 release: the storage layer, delivery and retention of the release candidates below, road-tested
+with the CMS's form builder add-on on a copy of a live site.
 
 ### Changed
 
